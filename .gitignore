@@ -1,0 +1,50 @@
+# Build artifacts
+bin/
+obj/
+out/
+publish/
+*.exe
+*.dll
+*.pdb
+
+# IDEs
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# VS Code – keep common configs, ignore the rest
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs & diagnostics
+*.log
+logs/
+TestResults/
+BenchmarkDotNet.Artifacts/
+coverage/
+*.coverage
+*.coveragexml
+
+# Node/bundlers (if you add them for frontend assets)
+node_modules/
+dist/
+build/
+
+# Environment & secrets
+.env
+.env.*
+secrets.json
+appsettings.*.local.json
+
+# Docker
+docker-data/
