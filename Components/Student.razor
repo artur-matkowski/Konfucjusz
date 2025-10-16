@@ -1,0 +1,35 @@
+@page "/postgresqldatabase"
+@inherits OwningComponentBase<StudentService>
+
+
+<h3> Student </h3>
+
+<table border="1">
+    <thead>
+        <tr>
+            <th>Id</th>
+            <th>Name</th>
+            <th>eMail</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in sc)
+        {
+            <tr>
+                <td>@item.stid</td>
+                <td>@item.stname</td>
+                <td>@item.email</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code{
+    public System.Collections.Generic.IList<StudentClass> sc = default!;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        sc = Service.GetStudents();
+    }
+}
