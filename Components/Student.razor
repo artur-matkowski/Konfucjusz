@@ -22,6 +22,7 @@
                 <td>@item.stid</td>
                 <td>@item.stname</td>
                 <td>@item.email</td>
+                <button class="btn btn-danger" @onclick="() => RemoveStudent(item.stid)">Remove</button>
             </tr>
         }
     </tbody>
@@ -37,17 +38,21 @@
     {
         base.OnInitialized();
         sc = Service.GetStudents();
-        Console.WriteLine("DPAAAAAAAAAAAAAAAAAAAAddingStudent");
     }
 
     private void AddNewStudent()
     {
-        Console.WriteLine("AddingStudent");
         try {
             Service.AddStudent(new StudentClass { stid=45, stname="noname", email="xxx@ggg.com" });
             sc = Service.GetStudents();
         } catch (Exception ex) {
             Console.WriteLine(ex); // or render ex.Message in the page
         }
+    }
+
+    private void RemoveStudent(int id)
+    {
+        Service.RemoveStudent(id);
+        sc = Service.GetStudents();
     }
 }
