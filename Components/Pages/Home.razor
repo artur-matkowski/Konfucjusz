@@ -13,7 +13,7 @@ Welcome to your new app.
     <InputText @bind-Value="EmailRequest.To" class="form-control mt-2" placeholder="To"/>
     <InputText @bind-Value="EmailRequest.Subject" class="form-control mt-2" placeholder="Subkect"/>
     <InputText @bind-Value="EmailRequest.Body" class="form-control mt-2" placeholder="Body"/>
-    <button type="submit" class="btn btn-primary"  @onclick="SendEmail">Send eMail</button>
+    <button type="submit" class="btn btn-primary">Send eMail</button>
 </EditForm>
 
 @code{
@@ -24,7 +24,7 @@ Welcome to your new app.
     {
         var email = new MimeMessage();
         email.From.Add(MailboxAddress.Parse("artur.matkowski.zan+konfucjusz@gmail.com"));
-        email.To.Add(MailboxAddress.Parse("artur.matkowski.zan@gmail.com"));
+        email.To.Add(MailboxAddress.Parse(EmailRequest.To));
         email.Subject = EmailRequest.Subject;
         email.Body = new TextPart(MimeKit.Text.TextFormat.Html)
         {
