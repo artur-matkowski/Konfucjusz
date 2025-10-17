@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 public class StudentClass
 {
     [Key]
+    [Column("stid")]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int stid { get; set; }
    //[Column("stname", TypeName = "varchar(n)")]
     public string stname { get; set; } = "";
