@@ -9,8 +9,15 @@
 
 <button class="btn btn-primary" @onclick="IncrementCount">Click me</button>
 
+<div>
+    <input type="text" @bind="Text" @bind:event="oninput" />
+    <p>@Text</p>
+</div>
+
 @code {
     private int currentCount = 0;
+
+    private string Text { get; set; } = "debug test text";
     
     [Parameter]
     public int IncrementAmount {get; set; } = 3;
