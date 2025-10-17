@@ -21,6 +21,7 @@ public class StudentService
     public void RemoveStudent(int id)
     {
         var student = _dbcontext.student.Find(id);
+        if(student == null) return;
         _dbcontext.student.Remove(student);
         _dbcontext.SaveChanges();
     }
