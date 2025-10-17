@@ -11,10 +11,17 @@ public class StudentService
     {
         return _dbcontext.student.ToList();
     }
-    
+
     public void AddStudent(StudentClass _student)
     {
         _dbcontext.student.Add(_student);
+        _dbcontext.SaveChanges();
+    }
+    
+    public void RemoveStudent(int id)
+    {
+        var student = _dbcontext.student.Find(id);
+        _dbcontext.student.Remove(student);
         _dbcontext.SaveChanges();
     }
 }
