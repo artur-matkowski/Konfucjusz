@@ -20,17 +20,27 @@
             </NavLink>
         </div>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
-            </NavLink>
-        </div>
+        <AuthorizedView Roles="Administrator,User">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="postgresqldatabase">
+                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Display data
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizedView>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="postgresqldatabase">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Display data
-            </NavLink>
-        </div>
+        
+        <AuthorizedView Roles="Administrator">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="weather">
+                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizedView>
+
     </nav>
 </div>
 

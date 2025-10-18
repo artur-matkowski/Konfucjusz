@@ -14,4 +14,6 @@ public class ApplicationDbContext: DbContext
     }
 
     public DbSet<StudentClass> student { get; set; }
+
+    public DbSet<UserAccount> users { get; set; }
 }
