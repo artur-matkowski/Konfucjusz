@@ -34,27 +34,32 @@
 
 @code{
     [CascadingParameter]
-    public HttpContext HttpContext{ get; set; }
+    public HttpContext HttpContext{ get; set; } = default!;
 
 
     [SupplyParameterFromForm]    
     public LoginViewModel Model {get; set;} = new();
 
-    private string? errorMessage;
 
     private async Task Authenticate()
     {
-        UserAccount userAccount = dbContext.users.Where( x => x.userName == Model.UserName).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(Model?.UserName))
+        {
+            // handle empty input
+            return;
+        }
+
+        UserAccount? userAccount = dbContext?.users?.Where( x => x.userName == Model.UserName).FirstOrDefault();
 
         if(userAccount is null || userAccount.userPassword != Model.Password)
         {
-            errorMessage = "Invalid User Name or password";
+            return;
         }
 
         var claims = new List<Claim>
         {
             new Claim(ClaimTypes.Name, Model.UserName),
-            new Claim(ClaimTypes.Role, userAccount.userRole)
+            new Claim(ClaimTypes.Role, userAccount.userRole ?? "")
         };
 
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);

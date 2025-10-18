@@ -27,10 +27,10 @@
 @code {
     private int currentCount = 0;
 
-    private string Text { get; set; } = "debug test text";
+    private string? Text { get; set; } = "debug test text";
 
     [CascadingParameter]
-    private Task<AuthenticationState> authenticationStateTask {get; set;}
+    private Task<AuthenticationState> authenticationStateTask {get; set;} = default!;
     
     [Parameter]
     public int IncrementAmount {get; set; } = 3;
@@ -42,9 +42,10 @@
 
     private async Task DisplayGreetingAlert()
     {
-        var authenticationState = await authenticationStateTask;
+        var user = (await authenticationStateTask)?.User;
+        string? name = user?.Identity?.Name ?? "unknown";
+        string message = $"Hello {name}";
 
-        var message = $"Hello P{authenticationState.User.Identity.Name}";
         Console.Write(message);
     }
 }
