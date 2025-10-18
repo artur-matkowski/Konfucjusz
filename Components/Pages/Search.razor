@@ -1,0 +1,24 @@
+@page "/search"
+
+<h3>Search</h3>
+
+<p><b>q</b> = @Q ?? "(none)"</p>
+<p><b>page</b> = @(Page?.ToString() ?? "(none)")</p>
+
+@code {
+    // /search?q=hello&page=2
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "q")]
+    public string? Q { get; set; }
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "page")]
+    public int? Page { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        // This runs whenever the URL (route or query) changes.
+        // Use Q/Page here to load data, etc.
+    }
+}
