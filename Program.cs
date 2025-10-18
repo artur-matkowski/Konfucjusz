@@ -1,4 +1,5 @@
 using Konfucjusz.Components;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
 
@@ -16,6 +17,16 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddScoped<StudentService>();
 
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(opt =>
+    {
+        opt.Cookie.Name = "KonfucjuszUser";
+        opt.LoginPath = "/login";
+        opt.Cookie.MaxAge = TimeSpan.FromMinutes(30);
+        opt.AccessDeniedPath = "/accessDenied";
+    });
+builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
 
 var app = builder.Build();
 
@@ -31,6 +42,8 @@ app.UseHttpsRedirection();
 
 app.UseStaticFiles();
 app.UseAntiforgery();
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
