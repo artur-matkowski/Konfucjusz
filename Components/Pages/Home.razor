@@ -9,6 +9,23 @@
 
 Welcome to your new app.
 
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <AuthorizeView>
+                    <NotAuthorized>
+                        <span>You are not logged in. Please <a class="fw-bolder" href="/login">click here</a> to login</span>
+                    </NotAuthorized>
+                    <Authorized>
+                        <span> Logged in as <b>@context.User.Identity.Name</b>. <a class="fw-bolder" href="/logout">logout</a> to login</span>
+                    </Authorized>
+                </AuthorizeView>
+            </div>    
+        </div>
+    </div>
+</div>
+
 <EditForm Model="EmailRequest" FormName="EmailForm" OnSubmit="SendEmail">
     <InputText @bind-Value="EmailRequest.To" class="form-control mt-2" placeholder="To"/>
     <InputText @bind-Value="EmailRequest.Subject" class="form-control mt-2" placeholder="Subkect"/>
