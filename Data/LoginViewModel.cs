@@ -1,5 +1,5 @@
 
-
+/*
 using System.ComponentModel.DataAnnotations;
 
 public class LoginViewModel
@@ -9,4 +9,4 @@ public class LoginViewModel
 
     [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj hasło")]
     public string? Password { get; set; }
-}
+}*/
