@@ -16,7 +16,7 @@ public class UserAccount
     public string? userName { get; set; }
 
     [Column("user_password")]
-    [MaxLength(100)]
+    [MaxLength(256)]
     public string? userPassword { get; set; }
 
     [Column("user_email")]

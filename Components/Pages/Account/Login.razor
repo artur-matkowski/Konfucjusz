@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Authentication.Cookies
 @using System.Security.Claims
+@using Microsoft.AspNetCore.Identity
 @inject ApplicationDbContext dbContext
 @inject NavigationManager navigationManager
 
@@ -66,7 +67,17 @@
 
         UserAccount? userAccount = dbContext?.users?.Where( x => x.userName == Model.UserName).FirstOrDefault();
 
-        if(userAccount is null || userAccount.userPassword != Model.Password)
+        if (userAccount is null)
+        {
+            return;
+        }
+
+        // verify hashed password
+        var hasher = new PasswordHasher<UserAccount>();
+        var hashed = userAccount.userPassword ?? string.Empty;
+        var provided = Model.Password ?? string.Empty;
+        var verification = hasher.VerifyHashedPassword(userAccount, hashed, provided);
+        if (verification == PasswordVerificationResult.Failed)
         {
             return;
         }

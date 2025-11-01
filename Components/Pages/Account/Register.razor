@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Authentication.Cookies
 @using System.Security.Claims
+@using Microsoft.AspNetCore.Identity
 @inject ApplicationDbContext dbContext
 @inject NavigationManager navigationManager
 
@@ -111,13 +112,17 @@
                 return;
             }
 
-            newUser = new UserAccount
-            {
-                userName = Model.UserName,
-                userPassword = Model.Password, // consider hashing for production
-                userEmail = Model.eMail,
-                userRole = "User"
-            };
+                newUser = new UserAccount
+                {
+                    userName = Model.UserName,
+                    // userPassword will be set to hashed value below
+                    userEmail = Model.eMail,
+                    userRole = "User"
+                };
+
+                // hash password before saving
+                var hasher = new PasswordHasher<UserAccount>();
+                newUser.userPassword = hasher.HashPassword(newUser, Model.Password);
 
             dbContext.users.Add(newUser);
             await dbContext.SaveChangesAsync();
