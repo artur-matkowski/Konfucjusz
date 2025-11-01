@@ -29,10 +29,24 @@
                 <button type="submit" class="btn btn-primary">Login</button>
             </div>
         </EditForm>
+        <!-- Register button moved inside card and changed to a normal link to ensure navigation works reliably -->
+        <div class="mb-3 d-grid gap-2">
+            <a class="btn btn-outline-primary" href="/register">Register</a>
+        </div>
     </div>
 </div>
 
 @code{
+
+    public class LoginViewModel
+    {
+        [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj nazwę użytkownika")]
+        public string? UserName { get; set; }
+
+        [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj hasło")]
+        public string? Password { get; set; }
+    }
+
     [CascadingParameter]
     public HttpContext HttpContext{ get; set; } = default!;
 
@@ -43,6 +57,7 @@
 
     private async Task Authenticate()
     {
+        Console.WriteLine("Authenticate called");
         if (string.IsNullOrWhiteSpace(Model?.UserName))
         {
             // handle empty input
