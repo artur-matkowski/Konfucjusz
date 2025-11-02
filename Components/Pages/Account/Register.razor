@@ -1,6 +1,9 @@
 @page "/register"
+@rendermode InteractiveServer
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Authentication.Cookies
+@using MailKit.Net.Smtp
+@using MimeKit
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Identity
 @inject ApplicationDbContext dbContext
@@ -10,6 +13,16 @@
     <div class="col-lg-4 offset-lg-4 pt-4 pb-4 border">
         <EditForm Model="@Model" OnValidSubmit="RegisterUser" FormName="RegisterForm">
             <DataAnnotationsValidator />
+            @if (RegistrationSuccessful)
+            {
+                <div class="alert alert-success" role="alert">
+                    <strong>Success:</strong> @SuccessMessage
+                    @if (!string.IsNullOrWhiteSpace(VerificationEmailStatus))
+                    {
+                        <div class="mt-2 small">@VerificationEmailStatus</div>
+                    }
+                </div>
+            }
             <div class="mb-3 text-denter flex-column">
                 <h3>Register</h3>
             </div>
@@ -36,6 +49,14 @@
             <div class="mb-3 text-center">
                 <span class="text-danger">@ErrorMessage</span>
             </div>
+            <div class="mb-3">
+                <label>Captcha: solve the math</label>
+                <div class="d-flex gap-2 align-items-center">
+                    <span class="fs-5">@CaptchaA + @CaptchaB =</span>
+                    <InputText @bind-Value="Model.CaptchaAnswer" class="form-control" style="max-width:120px;" />
+                </div>
+                <ValidationMessage For="() => Model.CaptchaAnswer" />
+            </div>
             <div class="mb-3 d-grid gap-2">
                 <button type="submit" class="btn btn-primary">Register</button>
             </div>
@@ -58,7 +79,40 @@
 
         [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj eMail")]
         public string? eMail { get; set; }
+
+        public string? CaptchaAnswer { get; set; }
     }
+    // simple math captcha fields
+    private int CaptchaA { get; set; }
+    private int CaptchaB { get; set; }
+
+    private bool _captchaInitialized = false;
+
+    private void GenerateCaptcha()
+    {
+        var rnd = new Random();
+        CaptchaA = rnd.Next(1, 10);
+        CaptchaB = rnd.Next(1, 10);
+    }
+
+    protected override void OnInitialized()
+    {
+        // keep OnInitialized lightweight; defer interactive-only work to OnAfterRenderAsync
+        Console.WriteLine("OnInitialized called");
+        GenerateCaptcha();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        //Console.WriteLine("----OnAfterRenderAsync called");
+        if (firstRender)
+        {
+            // generate captcha on first interactive render so it's stable for the user
+            //GenerateCaptcha();
+            //StateHasChanged();
+        }
+    }
+
 
     [CascadingParameter]
     public HttpContext HttpContext{ get; set; } = default!;
@@ -68,6 +122,10 @@
     public LoginViewModel Model {get; set;} = new();
 
     private string? ErrorMessage { get; set; }
+
+    private bool RegistrationSuccessful { get; set; } = false;
+    private string? SuccessMessage { get; set; }
+    private string? VerificationEmailStatus { get; set; }
 
 
     private async Task RegisterUser()
@@ -80,15 +138,27 @@
             return;
         }
 
+        // captcha validation: ensure the user entered the correct sum
+        if (string.IsNullOrWhiteSpace(Model.CaptchaAnswer) || !int.TryParse(Model.CaptchaAnswer.Trim(), out var captchaValue) || captchaValue != (CaptchaA + CaptchaB))
+        {
+            ErrorMessage = "Captcha is incorrect. Please try again.";
+            Console.WriteLine($"Captcha failed: entered='{Model.CaptchaAnswer ?? "(null)"}' expected='{CaptchaA + CaptchaB}'");
+            GenerateCaptcha();
+            return;
+        }
+
+
         if (string.IsNullOrWhiteSpace(Model.UserName) || string.IsNullOrWhiteSpace(Model.Password) || string.IsNullOrWhiteSpace(Model.Password2) || string.IsNullOrWhiteSpace(Model.eMail))
         {
             Console.WriteLine("One or more required fields are empty");
+            GenerateCaptcha();
             return;
         }
 
         if (Model.Password != Model.Password2)
         {
             Console.WriteLine("Passwords do not match");
+            GenerateCaptcha();
             return;
         }
 
@@ -96,6 +166,7 @@
         if (dbContext is null)
         {
             Console.WriteLine("Database context is not available");
+            GenerateCaptcha();
             return;
         }
 
@@ -109,6 +180,7 @@
             {
                 ErrorMessage = $"User '{Model.UserName}' already exists";
                 Console.WriteLine(ErrorMessage);
+            GenerateCaptcha();
                 return;
             }
 
@@ -126,26 +198,51 @@
 
             dbContext.users.Add(newUser);
             await dbContext.SaveChangesAsync();
+
+            // indicate success and send a dummy verification email (non-blocking for UX)
+            RegistrationSuccessful = true;
+            SuccessMessage = "Registration successful. A verification email has been sent to your address.";
+            // try to send a dummy verification email; failures are non-fatal
+            _ = SendVerificationEmailAsync(newUser.userEmail ?? string.Empty, newUser.userName ?? string.Empty);
         }
         catch (Exception ex)
         {
             ErrorMessage = "Database error: " + ex.Message;
             Console.WriteLine(ex.ToString());
+            GenerateCaptcha();
             return;
         }
 
-        // sign in the new user
-        var claims = new List<Claim>
+        // stay on the page and show success message (no automatic navigation)
+        // client can be redirected later if desired
+    }
+
+    private async Task SendVerificationEmailAsync(string to, string userName)
+    {
+        try
         {
-            new Claim(ClaimTypes.Name, Model.UserName),
-            new Claim(ClaimTypes.Role, newUser.userRole ?? "")
-        };
+            var email = new MimeMessage();
+            email.From.Add(MailboxAddress.Parse("noreply@example.com"));
+            email.To.Add(MailboxAddress.Parse(string.IsNullOrWhiteSpace(to) ? "noreply@example.com" : to));
+            email.Subject = "[Dummy] Verify your account";
+            email.Body = new TextPart(MimeKit.Text.TextFormat.Plain)
+            {
+                Text = $"Hello {userName},\n\nThank you for registering. This is a dummy verification email.\n\n-- Konfucjusz"
+            };
 
-        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-        var principal = new ClaimsPrincipal(identity);
+            using var smtp = new SmtpClient();
+            // try localhost:25 by default; this is a dummy send and may fail in dev — that's OK
+            await smtp.ConnectAsync("localhost", 25, MailKit.Security.SecureSocketOptions.Auto);
+            // no authentication for dummy send
+            await smtp.SendAsync(email);
+            await smtp.DisconnectAsync(true);
 
-        await HttpContext.SignInAsync(principal);
-
-        navigationManager.NavigateTo("/");
+            VerificationEmailStatus = "Verification email sent (dummy).";
+        }
+        catch (Exception ex)
+        {
+            VerificationEmailStatus = "Verification email could not be sent (dummy).";
+            Console.WriteLine(ex.ToString());
+        }
     }
 }

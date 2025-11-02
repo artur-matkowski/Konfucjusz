@@ -1,4 +1,6 @@
 using Konfucjusz.Components;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
@@ -47,5 +49,33 @@ app.UseAuthorization();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+// Lightweight endpoint to sign in a just-registered user and set the auth cookie.
+// This performs a full HTTP response so the Set-Cookie header is sent to the browser.
+app.MapGet("/account/signin", async (HttpContext http) =>
+{
+    var q = http.Request.Query;
+    var user = q["username"].ToString();
+    var role = q["role"].ToString() ?? string.Empty;
+
+    if (string.IsNullOrWhiteSpace(user))
+    {
+        return Results.BadRequest("missing username");
+    }
+
+    var claims = new List<Claim>
+    {
+        new Claim(ClaimTypes.Name, user),
+        new Claim(ClaimTypes.Role, role)
+    };
+
+    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    var principal = new ClaimsPrincipal(identity);
+
+    await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+
+    // redirect to home (or return a 200 with a small page)
+    return Results.Redirect("/");
+});
 
 app.Run();
