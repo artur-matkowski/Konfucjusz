@@ -39,20 +39,7 @@ Welcome to your new app.
 
     void SendEmail()
     {
-        var email = new MimeMessage();
-        email.From.Add(MailboxAddress.Parse("artur.matkowski.zan+konfucjusz@gmail.com"));
-        email.To.Add(MailboxAddress.Parse(EmailRequest.To));
-        email.Subject = EmailRequest.Subject;
-        email.Body = new TextPart(MimeKit.Text.TextFormat.Html)
-        {
-            Text = EmailRequest.Body
-        };
-
-        using var stmp = new SmtpClient();
-        stmp.Connect("smtp.gmail.com", 587, MailKit.Security.SecureSocketOptions.StartTls);
-        stmp.Authenticate("artur.matkowski.zan@gmail.com", "feja mskj fxru sbuq");
-        stmp.Send(email);
-        stmp.Disconnect(true);
+        EmailRequest.SendEmail();
     }
 
 }
