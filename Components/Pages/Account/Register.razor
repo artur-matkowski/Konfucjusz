@@ -13,14 +13,33 @@
     <div class="col-lg-4 offset-lg-4 pt-4 pb-4 border">
         <EditForm Model="@Model" OnValidSubmit="RegisterUser" FormName="RegisterForm">
             <DataAnnotationsValidator />
-            @if (RegistrationSuccessful)
+            @if (RegsitrationFormCorrect)
             {
                 <div class="alert alert-success" role="alert">
-                    <strong>Success:</strong> @SuccessMessage
-                    @if (!string.IsNullOrWhiteSpace(VerificationEmailStatus))
+                    <strong>Hura:</strong> Twoje zgloszenie zostalo wysłane do serwera
+                </div>
+
+                @* If the verification email produced a status message, show it below the success box.
+                   If it indicates failure, show as an error; otherwise as info. *@
+                @if (!string.IsNullOrWhiteSpace(VerificationEmailStatus))
+                {
+                    if (VerificationEmailStatus?.Contains("could not", StringComparison.OrdinalIgnoreCase) == true
+                        || VerificationEmailStatus?.Contains("failed", StringComparison.OrdinalIgnoreCase) == true)
                     {
-                        <div class="mt-2 small">@VerificationEmailStatus</div>
+                        <div class="alert alert-danger mt-2" role="alert">@VerificationEmailStatus</div>
                     }
+                    else
+                    {
+                        <div class="alert alert-info mt-2" role="alert">@VerificationEmailStatus</div>
+                    }
+                }
+            }
+
+            @* Show any other error (captcha, db etc.) as an alert when registration not successful *@
+            @if (!RegsitrationFormCorrect && !string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                <div class="alert alert-danger" role="alert">
+                    <strong>Error:</strong> @ErrorMessage
                 </div>
             }
             <div class="mb-3 text-denter flex-column">
@@ -123,14 +142,14 @@
 
     private string? ErrorMessage { get; set; }
 
-    private bool RegistrationSuccessful { get; set; } = false;
-    private string? SuccessMessage { get; set; }
+    private bool RegsitrationFormCorrect { get; set; } = false;
+    private bool MailSendedCorrectly { get; set; } = false;
     private string? VerificationEmailStatus { get; set; }
 
 
     private async Task RegisterUser()
     {
-        Console.WriteLine("RegisterUser called");
+        RegsitrationFormCorrect = true;
 
         if (Model is null)
         {
@@ -199,11 +218,8 @@
             dbContext.users.Add(newUser);
             await dbContext.SaveChangesAsync();
 
-            // indicate success and send a dummy verification email (non-blocking for UX)
-            RegistrationSuccessful = true;
-            SuccessMessage = "Registration successful. A verification email has been sent to your address.";
             // try to send a dummy verification email; failures are non-fatal
-            _ = SendVerificationEmailAsync(newUser.userEmail ?? string.Empty, newUser.userName ?? string.Empty);
+            SendVerificationEmailAsync(newUser.userEmail ?? string.Empty, newUser.userName ?? string.Empty);
         }
         catch (Exception ex)
         {
@@ -217,25 +233,17 @@
         // client can be redirected later if desired
     }
 
-    private async Task SendVerificationEmailAsync(string to, string userName)
+    private void SendVerificationEmailAsync(string to, string userName)
     {
         try
         {
-            var email = new MimeMessage();
-            email.From.Add(MailboxAddress.Parse("noreply@example.com"));
-            email.To.Add(MailboxAddress.Parse(string.IsNullOrWhiteSpace(to) ? "noreply@example.com" : to));
-            email.Subject = "[Dummy] Verify your account";
-            email.Body = new TextPart(MimeKit.Text.TextFormat.Plain)
-            {
-                Text = $"Hello {userName},\n\nThank you for registering. This is a dummy verification email.\n\n-- Konfucjusz"
-            };
+            EmailRequest emailRequest = new();
 
-            using var smtp = new SmtpClient();
-            // try localhost:25 by default; this is a dummy send and may fail in dev — that's OK
-            await smtp.ConnectAsync("localhost", 25, MailKit.Security.SecureSocketOptions.Auto);
-            // no authentication for dummy send
-            await smtp.SendAsync(email);
-            await smtp.DisconnectAsync(true);
+            emailRequest.To = to;
+            emailRequest.Subject = "[Dummy] Verify your account";
+            emailRequest.Body = $"Hello {userName},\n\nThank you for registering. This is a dummy verification email.\n\n-- Konfucjusz";
+
+            emailRequest.SendEmail();
 
             VerificationEmailStatus = "Verification email sent (dummy).";
         }
@@ -244,5 +252,10 @@
             VerificationEmailStatus = "Verification email could not be sent (dummy).";
             Console.WriteLine(ex.ToString());
         }
+        finally
+        {
+            StateHasChanged();
+        }
+
     }
 }
