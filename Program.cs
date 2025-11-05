@@ -18,6 +18,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddScoped<StudentService>();
+builder.Services.AddScoped<UserService>();
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(opt =>
@@ -55,8 +56,8 @@ app.MapRazorComponents<App>()
 app.MapGet("/account/signin", async (HttpContext http) =>
 {
     var q = http.Request.Query;
-    var user = q["username"].ToString();
-    var role = q["role"].ToString() ?? string.Empty;
+    var user = q["user_email"].ToString();
+    var role = q["user_role"].ToString() ?? string.Empty;
 
     if (string.IsNullOrWhiteSpace(user))
     {
@@ -66,8 +67,17 @@ app.MapGet("/account/signin", async (HttpContext http) =>
     var claims = new List<Claim>
     {
         new Claim(ClaimTypes.Name, user),
-        new Claim(ClaimTypes.Role, role)
     };
+
+    // role may contain multiple roles separated by commas -> add a claim for each role
+    if (!string.IsNullOrWhiteSpace(role))
+    {
+        var roles = role.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var r in roles)
+        {
+            claims.Add(new Claim(ClaimTypes.Role, r));
+        }
+    }
 
     var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
     var principal = new ClaimsPrincipal(identity);
