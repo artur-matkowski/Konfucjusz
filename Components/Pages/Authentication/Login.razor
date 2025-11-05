@@ -15,7 +15,7 @@
             </div>
             <div class="mb-3">
                 <label>User Name</label>
-                <InputText @bind-Value="Model.UserName" class="form-control" placeholder="Username" />
+                <InputText @bind-Value="Model.UserName" class="form-control" placeholder="eMail" />
                 <ValidationMessage For="() => Model.UserName" />
             </div>
             <div class="mb-3">
@@ -82,11 +82,22 @@
             return;
         }
 
+        Console.WriteLine($"----Logging in as {Model.UserName}, with roles {userAccount.userRole}");
+
         var claims = new List<Claim>
         {
             new Claim(ClaimTypes.Name, Model.UserName),
-            new Claim(ClaimTypes.Role, userAccount.userRole ?? "")
         };
+
+        // userAccount.userRole may contain multiple roles separated by commas. Split and add each as a separate claim.
+        if (!string.IsNullOrWhiteSpace(userAccount.userRole))
+        {
+            var roles = userAccount.userRole.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var r in roles)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, r));
+            }
+        }
 
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         var principal = new ClaimsPrincipal(identity);

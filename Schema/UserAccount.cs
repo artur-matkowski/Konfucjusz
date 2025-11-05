@@ -41,6 +41,9 @@ public class UserAccount
     [Column("user_creation_confirmed_by_admin")]
     public bool userCreationConfirmedByAdmin { get; set; }
 
+    [Column("creation_timestamp")] //with timezone
+    public DateTime creationTimestamp { get; set; }
+
 
     public string GetProtectedHash()
     {
