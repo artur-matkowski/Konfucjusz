@@ -25,44 +25,61 @@
             {
                 <tr>
                     <td class="text-muted">@item.Id</td>
-                    <td>@(item.creationTimestamp.ToString() ?? "-")</td>
-                    <td>@item.userName</td>
-                    <td>@item.surname</td>
-                    <td>@item.userEmail</td>
-                    <td>
-                        @if (item.mailValidated)
-                        {
-                            <span class="badge bg-success">Yes</span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-secondary">No</span>
-                        }
-                    </td>
-                    <td>
-                        @if (item.userCreationConfirmedByAdmin)
-                        {
-                            <span class="badge bg-success">Approved</span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-warning text-dark">Pending</span>
-                        }
-                    </td>
-                    <td>@item.userRole</td>
-                    <td>
-                        <div class="d-flex gap-2">
-                            @if(EditedIds.Contains(item.Id))
+                    <td class="text-nowrap">@(item.creationTimestamp.ToString("g") ?? "-")</td>
+
+                    @if (EditedIds.Contains(item.Id))
+                    {
+                        <td><InputText @bind-Value="item.userName" class="form-control form-control-sm" /></td>
+                        <td><InputText @bind-Value="item.surname" class="form-control form-control-sm" /></td>
+                        <td><InputText @bind-Value="item.userEmail" class="form-control form-control-sm" /></td>
+                        <td>
+                            <InputCheckbox @bind-Value="item.mailValidated" />
+                        </td>
+                        <td>
+                            <InputCheckbox @bind-Value="item.userCreationConfirmedByAdmin" />
+                        </td>
+                        <td><InputText @bind-Value="item.userRole" class="form-control form-control-sm" /></td>
+                        <td>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-primary" @onclick="() => Save(item)">Save</button>
+                                <button class="btn btn-sm btn-secondary" @onclick="() => CancelEdit(item.Id)">Cancel</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => Remove(item.userEmail)">Remove</button>
+                            </div>
+                        </td>
+                    }
+                    else
+                    {
+                        <td>@item.userName</td>
+                        <td>@item.surname</td>
+                        <td>@item.userEmail</td>
+                        <td>
+                            @if (item.mailValidated)
                             {
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => {EditedIds.RemoveAll(x => x == item.Id); Edit(item);}">Save</button>                            
+                                <span class="badge bg-success">Yes</span>
                             }
                             else
                             {
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditedIds.Add(item.Id)">Edit</button>
+                                <span class="badge bg-secondary">No</span>
                             }
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => Remove(item.userEmail)">Remove</button>
-                        </div>
-                    </td>
+                        </td>
+                        <td>
+                            @if (item.userCreationConfirmedByAdmin)
+                            {
+                                <span class="badge bg-success">Approved</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning text-dark">Pending</span>
+                            }
+                        </td>
+                        <td>@item.userRole</td>
+                        <td>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditedIds.Add(item.Id)">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => Remove(item.userEmail)">Remove</button>
+                            </div>
+                        </td>
+                    }
                 </tr>
             }
         </tbody>
@@ -105,6 +122,21 @@
     private void Edit(UserAccount user)
     {
         Service.Update(user);
+        sc = Service.GetUsers();
+    }
+
+    private void Save(UserAccount user)
+    {
+        // commit edits for the row and exit edit mode
+        Service.Update(user);
+        EditedIds.RemoveAll(x => x == user.Id);
+        sc = Service.GetUsers();
+    }
+
+    private void CancelEdit(int id)
+    {
+        // discard changes by reloading from DB and leaving edit mode
+        EditedIds.RemoveAll(x => x == id);
         sc = Service.GetUsers();
     }
 
