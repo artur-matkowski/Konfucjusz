@@ -11,6 +11,7 @@
 @inject NavigationManager navigationManager
 @using System.Net
 @using System.Text
+@using Microsoft.EntityFrameworkCore
 
 <div class="row">
     <div class="col-lg-4 offset-lg-4 pt-4 pb-4 border">
@@ -19,7 +20,7 @@
             @if (RegsitrationFormCorrect)
             {
                 <div class="alert alert-success" role="alert">
-                    <strong>Sukces:</strong> Twoje zgloszenie zostalo wysłane do serwera I jest teraz przetwarzane. Poczekaj momencik.
+                    <strong>Jeszcze momencik</strong> musimy pomyśleć.
                 </div>
 
                 @* If the verification email produced a status message, show it below the success box.
@@ -39,7 +40,7 @@
             }
 
             @* Show any other error (captcha, db etc.) as an alert when registration not successful *@
-            @if (!RegsitrationFormCorrect && !string.IsNullOrWhiteSpace(ErrorMessage))
+            @if (!string.IsNullOrWhiteSpace(ErrorMessage))
             {
                 <div class="alert alert-danger" role="alert">
                     <strong>Error:</strong> @ErrorMessage
@@ -72,9 +73,6 @@
                 <label>eMail</label>
                 <InputText @bind-Value="Model.eMail" class="form-control" type="email" placeholder="Email" />
                 <ValidationMessage For="() => Model.eMail" />
-            </div>
-            <div class="mb-3 text-center">
-                <span class="text-danger">@ErrorMessage</span>
             </div>
             <div class="mb-3">
                 <label>Captcha: solve the math</label>
@@ -160,100 +158,99 @@
 
     private async Task RegisterUser()
     {
+        // Show the "working" popup immediately
         RegsitrationFormCorrect = true;
+        await InvokeAsync(StateHasChanged);
 
-        if (Model is null)
-        {
-            Console.WriteLine("Model is null");
-            return;
-        }
+        // Start registration work asynchronously (fire-and-forget) so the UI stays responsive.
+        // PerformRegistration is fully async (uses EF Core async APIs) and will update UI when done.
+        _ = PerformRegistration();
+    }
 
-
-        var user = dbContext.users.Where(u => (u.userEmail == Model.eMail)).FirstOrDefault();
-        if (user is not null)
-        {
-            ErrorMessage = "Urzytkownik z takim adresem email już istnieje";
-            return;
-        }
-
-        // captcha validation: ensure the user entered the correct sum
-        if (string.IsNullOrWhiteSpace(Model.CaptchaAnswer) || !int.TryParse(Model.CaptchaAnswer.Trim(), out var captchaValue) || captchaValue != (CaptchaA + CaptchaB))
-        {
-            ErrorMessage = "Captcha niepoprawne. Srubuj ponownie";
-            Console.WriteLine($"Captcha failed: entered='{Model.CaptchaAnswer ?? "(null)"}' expected='{CaptchaA + CaptchaB}'");
-            GenerateCaptcha();
-            return;
-        }
-
-
-        if (string.IsNullOrWhiteSpace(Model.UserName) || string.IsNullOrWhiteSpace(Model.Password) || string.IsNullOrWhiteSpace(Model.Password2) || string.IsNullOrWhiteSpace(Model.eMail))
-        {
-            Console.WriteLine("One or more required fields are empty");
-            GenerateCaptcha();
-            return;
-        }
-
-        if (Model.Password != Model.Password2)
-        {
-            Console.WriteLine("Passwords do not match");
-            GenerateCaptcha();
-            return;
-        }
-
-        // ensure dbContext is available
-        if (dbContext is null)
-        {
-            Console.WriteLine("Database context is not available");
-            GenerateCaptcha();
-            return;
-        }
-
-    UserAccount? newUser = null;
-
-    try
+    private async Task PerformRegistration()
     {
-            // check if user exists
-            var existing = dbContext.users.Where(x => x.userName == Model.UserName).FirstOrDefault();
-            if (existing is not null)
+        try
+        {
+
+            if (Model is null)
             {
-                ErrorMessage = $"User '{Model.UserName}' already exists";
-                Console.WriteLine(ErrorMessage);
-                GenerateCaptcha();
+                Console.WriteLine("Model is null");
                 return;
             }
 
-                newUser = new UserAccount
-                {
-                    userName = Model.UserName,
-                    // userPassword will be set to hashed value below
-                    userEmail = Model.eMail,
-                    surname = Model.SurName,
-                    userRole = "User"
-                };
 
-                // hash password before saving
-                var hasher = new PasswordHasher<UserAccount>();
-                newUser.userPassword = hasher.HashPassword(newUser, Model.Password);
+            var user = await dbContext.users.Where(u => (u.userEmail == Model.eMail)).FirstOrDefaultAsync();
+            if (user is not null)
+            {
+                ErrorMessage = "Urzytkownik z takim adresem email już istnieje";
+                return;
+            }
+
+            // captcha validation: ensure the user entered the correct sum
+            if (string.IsNullOrWhiteSpace(Model.CaptchaAnswer) || !int.TryParse(Model.CaptchaAnswer.Trim(), out var captchaValue) || captchaValue != (CaptchaA + CaptchaB))
+            {
+                ErrorMessage = "Captcha niepoprawne. Srubuj ponownie";
+                Console.WriteLine($"Captcha failed: entered='{Model.CaptchaAnswer ?? "(null)"}' expected='{CaptchaA + CaptchaB}'");
+                return;
+            }
+
+
+            if (string.IsNullOrWhiteSpace(Model.UserName) || string.IsNullOrWhiteSpace(Model.Password) || string.IsNullOrWhiteSpace(Model.Password2) || string.IsNullOrWhiteSpace(Model.eMail))
+            {
+                Console.WriteLine("One or more required fields are empty");
+                return;
+            }
+
+            if (Model.Password != Model.Password2)
+            {
+                Console.WriteLine("Passwords do not match");
+                return;
+            }
+
+            // ensure dbContext is available
+            if (dbContext is null)
+            {
+                Console.WriteLine("Database context is not available");
+                return;
+            }
+
+            UserAccount? newUser = null;
+
+            newUser = new UserAccount
+            {
+                userName = Model.UserName,
+                // userPassword will be set to hashed value below
+                userEmail = Model.eMail,
+                surname = Model.SurName,
+                userRole = "User"
+            };
+
+            // hash password before saving
+            var hasher = new PasswordHasher<UserAccount>();
+            newUser.userPassword = hasher.HashPassword(newUser, Model.Password);
 
             dbContext.users.Add(newUser);
             await dbContext.SaveChangesAsync();
 
             // try to send a dummy verification email; failures are non-fatal
-            SendVerificationEmail(newUser.userEmail, newUser.userName);
+            _ = SendVerificationEmailAsync(newUser.userEmail, newUser.userName);
         }
         catch (Exception ex)
         {
             ErrorMessage = "Database error: " + ex.Message;
             Console.WriteLine(ex.ToString());
+        }
+        finally
+        {
             GenerateCaptcha();
-            return;
+            StateHasChanged();
         }
 
         // stay on the page and show success message (no automatic navigation)
         // client can be redirected later if desired
     }
 
-    private void SendVerificationEmail(string to, string userName)
+    private async Task SendVerificationEmailAsync(string to, string userName)
     {
         try
         {
@@ -262,10 +259,11 @@
             emailRequest.To = to;
             emailRequest.Subject = "[Dummy] Verify your account";
             // fetch the just-saved user from the database to include identifying data in the token
-            var user = dbContext.users.Where(u => (u.userName == userName) && (u.userEmail == to)).FirstOrDefault();
+            var user = await dbContext.users.Where(u => (u.userName == userName) && (u.userEmail == to)).FirstOrDefaultAsync();
             if (user is null)
             {
                 VerificationEmailStatus = "Verification email could not be created: user not found.";
+                await InvokeAsync(StateHasChanged);
                 return;
             }
 
@@ -277,7 +275,8 @@
             emailRequest.Body = $"Hello {user.userName},\n\nThank you for registering.\nPlease click the link below to verify your email address:\n{verificationLink}\n\n-- Konfucjusz";
 
             // send the email (may fail in dev if no SMTP server)
-            emailRequest.SendEmail();
+            // EmailRequest.SendEmail may be synchronous; run it off the sync context to avoid blocking.
+            await Task.Run(() => emailRequest.SendEmail());
 
             VerificationEmailStatus = $"Link weryfikujący adres e-Mail zostal wyslany na twoją skrzynkę.\n\nOtwórz go i kliknij, aby potwierdzic adres.";
         }
@@ -288,7 +287,7 @@
         }
         finally
         {
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
 
     }
