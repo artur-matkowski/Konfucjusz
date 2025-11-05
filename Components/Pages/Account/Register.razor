@@ -7,7 +7,10 @@
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Identity
 @inject ApplicationDbContext dbContext
+@inject Microsoft.AspNetCore.DataProtection.IDataProtectionProvider DataProtectionProvider
 @inject NavigationManager navigationManager
+@using System.Net
+@using System.Text
 
 <div class="row">
     <div class="col-lg-4 offset-lg-4 pt-4 pb-4 border">
@@ -16,7 +19,7 @@
             @if (RegsitrationFormCorrect)
             {
                 <div class="alert alert-success" role="alert">
-                    <strong>Hura:</strong> Twoje zgloszenie zostalo wysłane do serwera
+                    <strong>Sukces:</strong> Twoje zgloszenie zostalo wysłane do serwera I jest teraz przetwarzane. Poczekaj momencik.
                 </div>
 
                 @* If the verification email produced a status message, show it below the success box.
@@ -46,9 +49,14 @@
                 <h3>Register</h3>
             </div>
             <div class="mb-3">
-                <label>User Name</label>
+                <label>Imię</label>
                 <InputText @bind-Value="Model.UserName" class="form-control" placeholder="Username" />
                 <ValidationMessage For="() => Model.UserName" />
+            </div>
+            <div class="mb-3">
+                <label>Nazwisko</label>
+                <InputText @bind-Value="Model.SurName" class="form-control" placeholder="Surname" />
+                <ValidationMessage For="() => Model.SurName" />
             </div>
             <div class="mb-3">
                 <label>Password</label>
@@ -87,13 +95,16 @@
 
     public class LoginViewModel
     {
-        [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj nazwę użytkownika")]
+        [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj Imię")]
         public string? UserName { get; set; }
+        
+        [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj Nazwisko")]
+        public string? SurName { get; set; }
 
         [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj hasło")]
         public string? Password { get; set; }
 
-        [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj hasło")]
+        [Required(AllowEmptyStrings = false, ErrorMessage = "Powtórz hasło")]
         public string? Password2 { get; set; }
 
         [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj eMail")]
@@ -157,10 +168,18 @@
             return;
         }
 
+
+        var user = dbContext.users.Where(u => (u.userEmail == Model.eMail)).FirstOrDefault();
+        if (user is not null)
+        {
+            ErrorMessage = "Urzytkownik z takim adresem email już istnieje";
+            return;
+        }
+
         // captcha validation: ensure the user entered the correct sum
         if (string.IsNullOrWhiteSpace(Model.CaptchaAnswer) || !int.TryParse(Model.CaptchaAnswer.Trim(), out var captchaValue) || captchaValue != (CaptchaA + CaptchaB))
         {
-            ErrorMessage = "Captcha is incorrect. Please try again.";
+            ErrorMessage = "Captcha niepoprawne. Srubuj ponownie";
             Console.WriteLine($"Captcha failed: entered='{Model.CaptchaAnswer ?? "(null)"}' expected='{CaptchaA + CaptchaB}'");
             GenerateCaptcha();
             return;
@@ -199,7 +218,7 @@
             {
                 ErrorMessage = $"User '{Model.UserName}' already exists";
                 Console.WriteLine(ErrorMessage);
-            GenerateCaptcha();
+                GenerateCaptcha();
                 return;
             }
 
@@ -208,6 +227,7 @@
                     userName = Model.UserName,
                     // userPassword will be set to hashed value below
                     userEmail = Model.eMail,
+                    surname = Model.SurName,
                     userRole = "User"
                 };
 
@@ -219,7 +239,7 @@
             await dbContext.SaveChangesAsync();
 
             // try to send a dummy verification email; failures are non-fatal
-            SendVerificationEmailAsync(newUser.userEmail ?? string.Empty, newUser.userName ?? string.Empty);
+            SendVerificationEmail(newUser.userEmail, newUser.userName);
         }
         catch (Exception ex)
         {
@@ -233,7 +253,7 @@
         // client can be redirected later if desired
     }
 
-    private void SendVerificationEmailAsync(string to, string userName)
+    private void SendVerificationEmail(string to, string userName)
     {
         try
         {
@@ -241,11 +261,25 @@
 
             emailRequest.To = to;
             emailRequest.Subject = "[Dummy] Verify your account";
-            emailRequest.Body = $"Hello {userName},\n\nThank you for registering. This is a dummy verification email.\n\n-- Konfucjusz";
+            // fetch the just-saved user from the database to include identifying data in the token
+            var user = dbContext.users.Where(u => (u.userName == userName) && (u.userEmail == to)).FirstOrDefault();
+            if (user is null)
+            {
+                VerificationEmailStatus = "Verification email could not be created: user not found.";
+                return;
+            }
 
+            // build a verification link (URL-encode the token)
+            var encoded = user.GetProtectedHash();
+            var baseUri = navigationManager.BaseUri?.TrimEnd('/') ?? string.Empty;
+            var verificationLink = $"{baseUri}/validatemail?token={encoded}";
+
+            emailRequest.Body = $"Hello {user.userName},\n\nThank you for registering.\nPlease click the link below to verify your email address:\n{verificationLink}\n\n-- Konfucjusz";
+
+            // send the email (may fail in dev if no SMTP server)
             emailRequest.SendEmail();
 
-            VerificationEmailStatus = "Verification email sent (dummy).";
+            VerificationEmailStatus = $"Link weryfikujący adres e-Mail zostal wyslany na twoją skrzynkę.\n\nOtwórz go i kliknij, aby potwierdzic adres.";
         }
         catch (Exception ex)
         {

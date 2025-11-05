@@ -1,0 +1,101 @@
+@page "/validatemail"
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@using Npgsql.TypeMapping
+@using System.Security.Principal
+@inject ApplicationDbContext dbContext
+
+
+<div class="row">
+    <div class="col-lg-4 offset-lg-4 pt-4 pb-4 border">
+    @if(e_status == Status.InVeryfication)
+    {
+        <div class="alert alert-info" role="alert">
+            <strong>Weryfikacja adresu eMail...</strong>
+        </div>
+    }
+    else if(e_status == Status.Succes)
+    {
+        <div class="alert alert-success" role="alert">
+            <strong>Weryfikacja adresu eMail...</strong> @message
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-danger" role="alert">
+            <strong>Weryfikacja adresu eMail...</strong> @message
+        </div>
+    }
+    </div>
+</div>
+
+
+@code {
+    enum Status
+    {
+        InVeryfication = 0,
+        Succes = 1,
+        Failed = 2
+    } ;
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "token")]
+    public string? token { get; set; }
+
+    private Status e_status = Status.InVeryfication;
+
+    private string? message;
+
+    // Run validation after the first interactive render so the page loads quickly with
+    // a "working" message while DB work runs in the background. Validation is idempotent.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (!firstRender)
+            return;
+
+        // kick off validation on the synchronization context so UI updates (StateHasChanged)
+        // will be marshalled correctly. We don't await here because we want the initial
+        // render to finish fast and the work to run in background.
+        _ = InvokeAsync(async () =>
+        {
+            await ValidateTokenAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task ValidateTokenAsync()
+    {
+        Console.WriteLine("-------Validating user eMail (background task)");
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            message = "Missing token";
+            e_status = Status.Failed;
+            return;
+        }
+
+        string? mail = UserAccount.ExtractMailFromToken(token ?? "nulltoken");
+
+        var user = await dbContext.users.Where(u => u.userEmail == mail).FirstOrDefaultAsync();
+
+        if (user is null)
+        {
+            message = "Could not find user associated with this activation token";
+            e_status = Status.Failed;
+            return;
+        }
+
+        if (user.mailValidated)
+        {
+            message =  "Poprzednio potwierdzony";
+            e_status = Status.Succes;
+            return;
+        }
+
+        user.mailValidated = true;
+        await dbContext.SaveChangesAsync();
+        e_status = Status.Succes;
+        message = "Poprawna";
+    }
+}
