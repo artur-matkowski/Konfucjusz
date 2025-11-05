@@ -58,19 +58,6 @@ public class UserAccount
         return encoded;
     }
 
-    public bool CompareProtectedHash(string token)
-    {
-        var provider = DataProtectionProvider.Create("Konfucjusz");
-        var protector = provider.CreateProtector("Konfucjusz.EmailVerification.v1");
-
-        var bytes = Convert.FromBase64String(token);
-        var original = Encoding.UTF8.GetString(protector.Unprotect(bytes));
-
-        var expected = $"{this.Id}|{this.userName}|{this.userPassword}|{this.userEmail}|{this.userRole}";
-
-        return expected == original;
-    }
-
     public static string? ExtractMailFromToken(string token)
     {
         try
