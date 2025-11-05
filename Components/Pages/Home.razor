@@ -5,10 +5,6 @@
 
 <PageTitle>Home</PageTitle>
 
-<h1>Hello, world!</h1>
-
-Welcome to your new app.
-
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -25,21 +21,3 @@ Welcome to your new app.
         </div>
     </div>
 </div>
-
-<EditForm Model="EmailRequest" FormName="EmailForm" OnSubmit="SendEmail">
-    <InputText @bind-Value="EmailRequest.To" class="form-control mt-2" placeholder="To"/>
-    <InputText @bind-Value="EmailRequest.Subject" class="form-control mt-2" placeholder="Subkect"/>
-    <InputText @bind-Value="EmailRequest.Body" class="form-control mt-2" placeholder="Body"/>
-    <button type="submit" class="btn btn-primary">Send eMail</button>
-</EditForm>
-
-@code{
-    [SupplyParameterFromForm]
-    EmailRequest EmailRequest {get; set;} = new();
-
-    void SendEmail()
-    {
-        EmailRequest.SendEmail();
-    }
-
-}

@@ -114,8 +114,6 @@
     private int CaptchaA { get; set; }
     private int CaptchaB { get; set; }
 
-    private bool _captchaInitialized = false;
-
     private void GenerateCaptcha()
     {
         var rnd = new Random();
@@ -130,16 +128,6 @@
         GenerateCaptcha();
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        //Console.WriteLine("----OnAfterRenderAsync called");
-        if (firstRender)
-        {
-            // generate captcha on first interactive render so it's stable for the user
-            //GenerateCaptcha();
-            //StateHasChanged();
-        }
-    }
 
 
     [CascadingParameter]
