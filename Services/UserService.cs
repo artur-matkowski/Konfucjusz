@@ -1,4 +1,6 @@
 
+using MimeKit.Encodings;
+
 public class UserService
 {
     protected readonly ApplicationDbContext _dbcontext;
@@ -9,7 +11,7 @@ public class UserService
     }
     public List<UserAccount> GetUsers()
     {
-        return _dbcontext.users.ToList();
+        return _dbcontext.users.OrderBy(u => u.Id).ToList();
     }
 
     public void Add(UserAccount _student)
