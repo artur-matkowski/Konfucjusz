@@ -1,0 +1,154 @@
+@page "/events"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = "Administrator,Organizer")]
+@inject EventService EventSvc
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ApplicationDbContext Db
+@inject NavigationManager Nav
+
+<h3>My Events</h3>
+
+@if (!string.IsNullOrEmpty(StatusMessage))
+{
+    <div class="alert @StatusCss" role="alert">@StatusMessage</div>
+}
+
+<div class="mb-3">
+    @if (CurrentUserRole.Contains("Organizer") || CurrentUserRole.Contains("Administrator"))
+    {
+        <button class="btn btn-primary" @onclick="CreateNewEvent">Create Event</button>
+    }
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>Title</th>
+                <th>Event Start</th>
+                <th>Event End</th>
+                <th>Searchable</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Events == null || !Events.Any())
+            {
+                <tr><td colspan="5" class="text-muted">No events found.</td></tr>
+            }
+            else
+            {
+                @foreach (var evt in Events)
+                {
+                    <tr>
+                        <td>@evt.Title</td>
+                        <td>@evt.EventStartDate.ToString("g")</td>
+                        <td>@evt.EventEndDate.ToString("g")</td>
+                        <td>
+                            @if (evt.Searchable)
+                            {
+                                <span class="badge bg-success">Yes</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">No</span>
+                            }
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => EditEvent(evt.Id)">Edit</button>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<Event> Events { get; set; } = new();
+    private int CurrentUserId { get; set; }
+    private string CurrentUserRole { get; set; } = string.Empty;
+    private string? StatusMessage { get; set; }
+    private string StatusCss { get; set; } = "alert-info";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user?.Identity?.IsAuthenticated != true)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        var email = user.Identity?.Name;
+        var userAccount = await Db.users.FirstOrDefaultAsync(u => u.userEmail == email);
+        if (userAccount == null)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        CurrentUserId = userAccount.Id;
+        CurrentUserRole = userAccount.userRole ?? string.Empty;
+
+        await LoadEventsAsync();
+    }
+
+    private async Task LoadEventsAsync()
+    {
+        Events = await EventSvc.GetEventsForUserAsync(CurrentUserId, CurrentUserRole);
+    }
+
+    private async Task CreateNewEvent()
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            var newEvent = new Event
+            {
+                Title = "New Event",
+                Description = "Event description",
+                EventStartDate = now.AddDays(7),
+                EventEndDate = now.AddDays(7).AddHours(2),
+                EnlistingStartDate = now,
+                EnlistingEndDate = now.AddDays(6),
+                AllowedAnonymousEnlisting = false,
+                AllowAnonymousStreaming = false,
+                Searchable = true
+            };
+
+            // If user has Organizer role, add them as first organizer
+            int? creatorId = null;
+            if (CurrentUserRole.Contains("Organizer"))
+            {
+                creatorId = CurrentUserId;
+            }
+
+            var created = await EventSvc.CreateEventAsync(newEvent, creatorId);
+            
+            StatusMessage = "Event created successfully.";
+            StatusCss = "alert-success";
+
+            await LoadEventsAsync();
+
+            // Navigate to edit page
+            Nav.NavigateTo($"/events/edit/{created.Id}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = "Error creating event.";
+            StatusCss = "alert-danger";
+        }
+    }
+
+    private void EditEvent(int eventId)
+    {
+        Nav.NavigateTo($"/events/edit/{eventId}");
+    }
+}

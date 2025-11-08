@@ -1,0 +1,341 @@
+@page "/events/edit/{EventId:int}"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = "Administrator,Organizer")]
+@inject EventService EventSvc
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ApplicationDbContext Db
+@inject NavigationManager Nav
+
+<h3>Edit Event</h3>
+
+@if (!CanManageEvent)
+{
+    <div class="alert alert-danger">You do not have permission to manage this event.</div>
+    <a href="/events" class="btn btn-secondary">Back to Events</a>
+    return;
+}
+
+@if (!string.IsNullOrEmpty(StatusMessage))
+{
+    <div class="alert @StatusCss" role="alert">@StatusMessage</div>
+}
+
+@if (CurrentEvent != null)
+{
+    <form>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label>Title</label>
+                <input type="text" class="form-control" @bind="CurrentEvent.Title" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label>Description</label>
+                <textarea class="form-control" rows="3" @bind="CurrentEvent.Description"></textarea>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label>Event Start Date</label>
+                <input type="datetime-local" class="form-control" @bind="CurrentEvent.EventStartDate" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label>Event End Date</label>
+                <input type="datetime-local" class="form-control" @bind="CurrentEvent.EventEndDate" />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label>Enlisting Start Date</label>
+                <input type="datetime-local" class="form-control" @bind="CurrentEvent.EnlistingStartDate" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label>Enlisting End Date</label>
+                <input type="datetime-local" class="form-control" @bind="CurrentEvent.EnlistingEndDate" />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" @bind="CurrentEvent.Searchable" id="searchable" />
+                    <label class="form-check-label" for="searchable">Searchable</label>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" @bind="CurrentEvent.AllowedAnonymousEnlisting" id="anonEnlist" />
+                    <label class="form-check-label" for="anonEnlist">Allow Anonymous Enlisting</label>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" @bind="CurrentEvent.AllowAnonymousStreaming" id="anonStream" />
+                    <label class="form-check-label" for="anonStream">Allow Anonymous Streaming</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <button type="button" class="btn btn-primary" @onclick="SaveEventAsync">Save Event</button>
+            <a href="/events" class="btn btn-secondary">Cancel</a>
+            @if (IsAdmin)
+            {
+                <button type="button" class="btn btn-outline-danger" @onclick="() => PromptDeleteEvent()">Delete Event</button>
+            }
+        </div>
+    </form>
+
+    <hr class="my-4" />
+
+    <h4>Event Organizers</h4>
+    
+    <div class="mb-3">
+        <label>Add Organizer by Email</label>
+        <div class="input-group">
+            <input type="email" class="form-control" @bind="NewOrganizerEmail" placeholder="user@example.com" />
+            <button class="btn btn-outline-primary" @onclick="AddOrganizerAsync">Add</button>
+        </div>
+    </div>
+
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Organizers == null || !Organizers.Any())
+            {
+                <tr><td colspan="3" class="text-muted">No organizers assigned.</td></tr>
+            }
+            else
+            {
+                @foreach (var org in Organizers)
+                {
+                    <tr>
+                        <td>@org.userName @org.surname</td>
+                        <td>@org.userEmail</td>
+                        <td>
+                            @if (org.Id != CurrentUserId)
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveOrganizerAsync(org.Id)">Remove</button>
+                            }
+                            else
+                            {
+                                <span class="text-muted">(You)</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+}
+
+@if (showDeleteDialog)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1050;display:flex;align-items:center;justify-content:center;">
+        <div class="card" style="width:520px;max-width:95%;">
+            <div class="card-body">
+                <h5 class="card-title">Confirm event deletion</h5>
+                <p class="card-text">Type the event title <code>@CurrentEvent?.Title</code> to confirm deletion.</p>
+                <input class="form-control mb-3" @bind="typedDeleteText" placeholder="Type title here" />
+                <div class="d-flex justify-content-end gap-2">
+                    <button class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
+                    <button class="btn btn-danger" disabled="@(typedDeleteText != CurrentEvent?.Title)" @onclick="ConfirmDeleteAsync">Delete event</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int EventId { get; set; }
+
+    private Event? CurrentEvent { get; set; }
+    private List<UserAccount> Organizers { get; set; } = new();
+    private bool CanManageEvent { get; set; }
+    private bool IsAdmin { get; set; }
+    private int CurrentUserId { get; set; }
+    private string CurrentUserRole { get; set; } = string.Empty;
+
+    private string? NewOrganizerEmail { get; set; }
+    private string? StatusMessage { get; set; }
+    private string StatusCss { get; set; } = "alert-info";
+
+    private bool showDeleteDialog = false;
+    private string typedDeleteText = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user?.Identity?.IsAuthenticated != true)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        var email = user.Identity?.Name;
+        var userAccount = await Db.users.FirstOrDefaultAsync(u => u.userEmail == email);
+        if (userAccount == null)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        CurrentUserId = userAccount.Id;
+        CurrentUserRole = userAccount.userRole ?? string.Empty;
+        IsAdmin = CurrentUserRole.Contains("Administrator");
+
+        CurrentEvent = await Db.events.FindAsync(EventId);
+        if (CurrentEvent == null)
+        {
+            Nav.NavigateTo("/events");
+            return;
+        }
+
+        CanManageEvent = await EventSvc.CanUserManageEventAsync(CurrentUserId, EventId, CurrentUserRole);
+        
+        if (!CanManageEvent)
+        {
+            return;
+        }
+
+        await LoadOrganizersAsync();
+    }
+
+    private async Task LoadOrganizersAsync()
+    {
+        Organizers = await EventSvc.GetOrganizersForEventAsync(EventId);
+    }
+
+    private async Task SaveEventAsync()
+    {
+        try
+        {
+            if (CurrentEvent == null) return;
+
+            Db.events.Update(CurrentEvent);
+            await Db.SaveChangesAsync();
+
+            StatusMessage = "Event updated successfully.";
+            StatusCss = "alert-success";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = "Error saving event.";
+            StatusCss = "alert-danger";
+        }
+    }
+
+    private async Task AddOrganizerAsync()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(NewOrganizerEmail))
+            {
+                StatusMessage = "Please enter an email address.";
+                StatusCss = "alert-warning";
+                return;
+            }
+
+            var (success, message) = await EventSvc.AddOrganizerByEmailAsync(EventId, NewOrganizerEmail);
+            
+            if (success)
+            {
+                StatusMessage = message;
+                StatusCss = "alert-success";
+                NewOrganizerEmail = string.Empty;
+                await LoadOrganizersAsync();
+            }
+            else
+            {
+                StatusMessage = message;
+                StatusCss = "alert-warning";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = "Error adding organizer.";
+            StatusCss = "alert-danger";
+        }
+    }
+
+    private async Task RemoveOrganizerAsync(int userId)
+    {
+        try
+        {
+            if (userId == CurrentUserId)
+            {
+                StatusMessage = "You cannot remove yourself as organizer.";
+                StatusCss = "alert-warning";
+                return;
+            }
+
+            var success = await EventSvc.RemoveOrganizerAsync(EventId, userId);
+            
+            if (success)
+            {
+                StatusMessage = "Organizer removed.";
+                StatusCss = "alert-success";
+                await LoadOrganizersAsync();
+            }
+            else
+            {
+                StatusMessage = "Organizer not found.";
+                StatusCss = "alert-warning";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = "Error removing organizer.";
+            StatusCss = "alert-danger";
+        }
+    }
+
+    private void PromptDeleteEvent()
+    {
+        typedDeleteText = string.Empty;
+        showDeleteDialog = true;
+    }
+
+    private void CancelDelete()
+    {
+        showDeleteDialog = false;
+        typedDeleteText = string.Empty;
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        try
+        {
+            if (CurrentEvent == null || typedDeleteText != CurrentEvent.Title)
+                return;
+
+            Db.events.Remove(CurrentEvent);
+            await Db.SaveChangesAsync();
+
+            Nav.NavigateTo("/events");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = "Error deleting event.";
+            StatusCss = "alert-danger";
+            showDeleteDialog = false;
+        }
+    }
+}
