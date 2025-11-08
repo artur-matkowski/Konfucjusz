@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Net;
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
+using System.Net.Http;
 
 
 [Table("user_account")]
@@ -59,6 +60,49 @@ public class UserAccount
 
 
         return encoded;
+    }
+
+    // Password reset token: payload id|email|expiryTicks (UTC). Protected with separate purpose string.
+    public string GeneratePasswordResetToken(TimeSpan ttl)
+    {
+        if (string.IsNullOrEmpty(this.userEmail))
+            throw new InvalidOperationException("User email is required to generate reset token.");
+
+        var provider = DataProtectionProvider.Create("Konfucjusz");
+        var protector = provider.CreateProtector("Konfucjusz.PasswordReset.v1");
+        var expiryUtc = DateTime.UtcNow.Add(ttl).Ticks;
+        var payload = $"{this.Id}|{this.userEmail}|{expiryUtc}";
+        var tokenBytes = protector.Protect(Encoding.UTF8.GetBytes(payload));
+        var token = Convert.ToBase64String(tokenBytes);
+        return WebUtility.UrlEncode(token);
+    }
+
+    public static bool TryParsePasswordResetToken(string token, out int userId, out string? email, out DateTime expiryUtc)
+    {
+        userId = 0;
+        email = null;
+        expiryUtc = default;
+        try
+        {
+            var provider = DataProtectionProvider.Create("Konfucjusz");
+            var protector = provider.CreateProtector("Konfucjusz.PasswordReset.v1");
+            // The ASP.NET Core query string binding already URL-decodes parameters.
+            // The GeneratePasswordResetToken method URL-encodes the protected Base64 string before placing it in the link.
+            // Therefore, at this point "token" should be the original Base64 text; do NOT UrlDecode again (would turn '+' into space).
+            var bytes = Convert.FromBase64String(token);
+            var original = Encoding.UTF8.GetString(protector.Unprotect(bytes));
+            var parts = original.Split('|');
+            if (parts.Length != 3) return false;
+            if (!int.TryParse(parts[0], out userId)) return false;
+            email = parts[1];
+            if (!long.TryParse(parts[2], out var ticks)) return false;
+            expiryUtc = new DateTime(ticks, DateTimeKind.Utc);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public static string? ExtractMailFromToken(string token)
