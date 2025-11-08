@@ -1,0 +1,23 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: konfucjusz_db
+      POSTGRES_USER: konfucjusz
+      POSTGRES_PASSWORD: konfucjuszpass
+    ports:
+      - "5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  mailhog:
+    image: mailhog/mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"    # SMTP
+      - "8025:8025"    # Web UI
+
+volumes:
+  db-data:
