@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components
 @attribute [Authorize(Roles = "Administrator")]
 @inject ApplicationDbContext Db
 
@@ -15,10 +16,14 @@
                 <th style="width:60px">Id</th>
                 <th style="width:160px">Created</th>
                 <th>Title</th>
-                <th style="width:160px">Event Start</th>
-                <th style="width:160px">Event End</th>
+                <th>Description</th>
+                <th style="width:150px">Enlist Start</th>
+                <th style="width:150px">Enlist End</th>
+                <th style="width:150px">Event Start</th>
+                <th style="width:150px">Event End</th>
                 <th style="width:100px">Searchable</th>
-                <th style="width:100px">Anon Enlist</th>
+                <th style="width:110px">Anon Enlist</th>
+                <th style="width:120px">Anon Stream</th>
                 <th style="width:150px">Actions</th>
             </tr>
         </thead>
@@ -31,11 +36,15 @@
 
                     @if (EditedIds.Contains(item.Id))
                     {
-                        <td><InputText @bind-Value="item.Title" class="form-control form-control-sm" /></td>
-                        <td><InputDate Type="InputDateType.DateTimeLocal" @bind-Value="item.EventStartDate" class="form-control form-control-sm" /></td>
-                        <td><InputDate Type="InputDateType.DateTimeLocal" @bind-Value="item.EventEndDate" class="form-control form-control-sm" /></td>
-                        <td><InputCheckbox @bind-Value="item.Searchable" /></td>
-                        <td><InputCheckbox @bind-Value="item.AllowedAnonymousEnlisting" /></td>
+                        <td><input type="text" class="form-control form-control-sm" @bind="item.Title" /></td>
+                        <td><textarea class="form-control form-control-sm" rows="2" @bind="item.Description"></textarea></td>
+                        <td><input type="datetime-local" class="form-control form-control-sm" @bind="item.EnlistingStartDate" /></td>
+                        <td><input type="datetime-local" class="form-control form-control-sm" @bind="item.EnlistingEndDate" /></td>
+                        <td><input type="datetime-local" class="form-control form-control-sm" @bind="item.EventStartDate" /></td>
+                        <td><input type="datetime-local" class="form-control form-control-sm" @bind="item.EventEndDate" /></td>
+                        <td class="text-center"><input type="checkbox" @bind="item.Searchable" /></td>
+                        <td class="text-center"><input type="checkbox" @bind="item.AllowedAnonymousEnlisting" /></td>
+                        <td class="text-center"><input type="checkbox" @bind="item.AllowAnonymousStreaming" /></td>
                         <td>
                             <div class="d-flex gap-2">
                                 <button class="btn btn-sm btn-primary" @onclick="() => SaveAsync(item)">Save</button>
@@ -47,6 +56,9 @@
                     else
                     {
                         <td>@item.Title</td>
+                        <td style="max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="@item.Description">@item.Description</td>
+                        <td class="text-nowrap">@(item.EnlistingStartDate.ToString("g"))</td>
+                        <td class="text-nowrap">@(item.EnlistingEndDate.ToString("g"))</td>
                         <td class="text-nowrap">@(item.EventStartDate.ToString("g"))</td>
                         <td class="text-nowrap">@(item.EventEndDate.ToString("g"))</td>
                         <td>
@@ -61,6 +73,16 @@
                         </td>
                         <td>
                             @if (item.AllowedAnonymousEnlisting)
+                            {
+                                <span class="badge bg-info">Yes</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">No</span>
+                            }
+                        </td>
+                        <td>
+                            @if (item.AllowAnonymousStreaming)
                             {
                                 <span class="badge bg-info">Yes</span>
                             }
