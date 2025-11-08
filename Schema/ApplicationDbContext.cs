@@ -16,6 +16,7 @@ public class ApplicationDbContext: DbContext
     public DbSet<UserAccount> users { get; set; }
     public DbSet<Event> events { get; set; }
     public DbSet<EventOrganizer> eventOrganizers { get; set; }
+    public DbSet<EventParticipant> eventParticipants { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +61,53 @@ public class ApplicationDbContext: DbContext
 
             // Unique constraint: one user can be organizer of same event only once
             eb.HasIndex(eo => new { eo.EventId, eo.UserId })
+                .IsUnique();
+        });
+
+        // Configure EventParticipant with cascade delete, timestamps, and partial unique constraints
+        modelBuilder.Entity<EventParticipant>(eb =>
+        {
+            eb.Property(e => e.CreatedAt)
+                .HasColumnName("created_at")
+                .HasDefaultValueSql("now()")
+                .ValueGeneratedOnAdd();
+
+            eb.Property(e => e.UpdatedAt)
+                .HasColumnName("updated_at")
+                .HasDefaultValueSql("now()")
+                .ValueGeneratedOnAddOrUpdate();
+
+            // FK to Event with CASCADE DELETE
+            eb.HasOne(ep => ep.Event)
+                .WithMany()
+                .HasForeignKey(ep => ep.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // FK to UserAccount with CASCADE DELETE (nullable)
+            eb.HasOne(ep => ep.User)
+                .WithMany()
+                .HasForeignKey(ep => ep.UserId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .IsRequired(false);
+
+            // Index on (event_id, status) for filtering
+            eb.HasIndex(ep => new { ep.EventId, ep.Status });
+
+            // Index on (event_id, created_at) for FIFO waitlist
+            eb.HasIndex(ep => new { ep.EventId, ep.CreatedAt });
+
+            // Index on normalized_email for lookups
+            eb.HasIndex(ep => ep.NormalizedEmail);
+
+            // Unique constraint for logged-in users: (event_id, user_id) where status is active
+            // Note: Partial unique indexes with WHERE clauses need raw SQL in migration
+            // We'll handle this in the migration SQL generation
+        });
+
+        // Configure Event with unique slug index
+        modelBuilder.Entity<Event>(eb =>
+        {
+            eb.HasIndex(e => e.Slug)
                 .IsUnique();
         });
     }

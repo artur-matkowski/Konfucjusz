@@ -1,0 +1,149 @@
+@page "/e/{slug}/confirm-email"
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
+@inject ParticipantService ParticipantService
+@inject NavigationManager Navigation
+
+<PageTitle>Confirm Email - Event Participation</PageTitle>
+
+<div class="container mt-5">
+    @if (loading)
+    {
+        <p>Verifying your email...</p>
+    }
+    else if (success)
+    {
+        <div class="alert alert-success">
+            <h4>Email Confirmed!</h4>
+            <p>Your participation has been confirmed for <strong>@eventData?.Title</strong>.</p>
+            
+            @if (!string.IsNullOrEmpty(statusMessage))
+            {
+                <p>@statusMessage</p>
+            }
+        </div>
+
+        @if (eventData != null)
+        {
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h5>Event Details</h5>
+                    <p><strong>Title:</strong> @eventData.Title</p>
+                    <p><strong>When:</strong> @eventData.EventStartDate.ToLocalTime().ToString("f") - @eventData.EventEndDate.ToLocalTime().ToString("f")</p>
+                    <p><strong>Description:</strong></p>
+                    <p>@eventData.Description</p>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(cancelToken))
+            {
+                <div class="card mt-3">
+                    <div class="card-body">
+                        <h6>Cancel Your Participation</h6>
+                        <p>If you need to cancel, use this link:</p>
+                        <a href="/e/@Slug/cancel?token=@Uri.EscapeDataString(cancelToken)" class="btn btn-sm btn-danger">Cancel Participation</a>
+                        <p class="text-muted mt-2"><small>Save this link for future reference.</small></p>
+                    </div>
+                </div>
+            }
+        }
+    }
+    else
+    {
+        <div class="alert alert-danger">
+            <h4>Confirmation Failed</h4>
+            <p>@errorMessage</p>
+            <p>Possible reasons:</p>
+            <ul>
+                <li>The link has expired (valid for 24 hours)</li>
+                <li>The link has already been used</li>
+                <li>The link is invalid</li>
+            </ul>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string Slug { get; set; } = string.Empty;
+
+    [SupplyParameterFromQuery]
+    public string? Token { get; set; }
+
+    private bool loading = true;
+    private bool success = false;
+    private string? errorMessage;
+    private string? statusMessage;
+    private string? cancelToken;
+    private Event? eventData;
+
+    protected override async Task OnInitializedAsync()
+    {
+        loading = true;
+
+        if (string.IsNullOrEmpty(Token))
+        {
+            errorMessage = "No confirmation token provided.";
+            loading = false;
+            return;
+        }
+
+        try
+        {
+            // Parse token
+            if (!ParticipantService.TryParseEmailConfirmToken(Token, out var participantId, out var eventId, out var email))
+            {
+                errorMessage = "Invalid or expired confirmation link.";
+                loading = false;
+                return;
+            }
+
+            // Load event
+            eventData = await DbContext.events.FirstOrDefaultAsync(e => e.Id == eventId && e.Slug == Slug);
+            if (eventData == null)
+            {
+                errorMessage = "Event not found.";
+                loading = false;
+                return;
+            }
+
+            // Confirm email
+            var confirmed = await ParticipantService.ConfirmAnonymousEmailAsync(participantId, eventId, email);
+            if (!confirmed)
+            {
+                errorMessage = "Could not confirm email. The link may have already been used or is invalid.";
+                loading = false;
+                return;
+            }
+
+            // Load updated participant
+            var participant = await DbContext.eventParticipants
+                .FirstOrDefaultAsync(ep => ep.Id == participantId);
+
+            if (participant != null)
+            {
+                // Generate cancel token for future use
+                cancelToken = ParticipantService.GenerateCancelToken(participant.Id, eventData.Id, email);
+
+                // Set status message
+                statusMessage = participant.Status switch
+                {
+                    ParticipantStatus.Confirmed => "You are confirmed for this event.",
+                    ParticipantStatus.Waitlisted => "You have been added to the waitlist. You'll be notified if a spot opens up.",
+                    ParticipantStatus.PendingApproval => "Your participation is pending organizer approval. You'll be notified once reviewed.",
+                    _ => "Your email has been confirmed."
+                };
+            }
+
+            success = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}

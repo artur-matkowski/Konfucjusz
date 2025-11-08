@@ -3,6 +3,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 
 
 
@@ -19,6 +21,10 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<EventService>();
+// ParticipantService requires slug secret - fetch from config or environment
+var slugSecret = builder.Configuration["SlugSecret"] ?? "default-slug-secret-change-in-production";
+builder.Services.AddScoped<ParticipantService>(sp => 
+    new ParticipantService(sp.GetRequiredService<ApplicationDbContext>(), slugSecret));
 // Bind SMTP settings and register EmailRequest for DI. Put real secrets in user-secrets or environment variables.
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
 builder.Services.AddScoped<EmailRequest>();
@@ -61,6 +67,41 @@ using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         db.Database.Migrate();
+
+        // Backfill slugs for existing events that don't yet have one (after columns exist).
+        // This runs once at startup; if slugSecret changes you may wish to regenerate manually.
+        var eventsWithoutSlug = db.events.Where(e => e.Slug == null || e.Slug == "").ToList();
+        if (eventsWithoutSlug.Any())
+        {
+            // Retrieve the same slugSecret used for ParticipantService registration above.
+            var localSlugSecret = builder.Configuration["SlugSecret"] ?? "default-slug-secret-change-in-production";
+            foreach (var ev in eventsWithoutSlug)
+            {
+                try
+                {
+                    // Ensure CreationTimestamp has a value; if default(DateTime) set now as fallback.
+                    if (ev.CreationTimestamp == default)
+                    {
+                        ev.CreationTimestamp = DateTime.UtcNow;
+                    }
+                    var payload = $"{ev.Id}|{ev.CreationTimestamp:O}";
+                    using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(localSlugSecret));
+                    var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
+                    var slug = Convert.ToBase64String(hash)
+                        .Replace('+', '-')
+                        .Replace('/', '_')
+                        .Replace("=", "");
+                    if (slug.Length > 16) slug = slug.Substring(0, 16);
+                    ev.Slug = slug;
+                }
+                catch (Exception genEx)
+                {
+                    Console.WriteLine($"Failed to generate slug for event {ev.Id}: {genEx.Message}");
+                }
+            }
+            db.SaveChanges();
+            Console.WriteLine($"Generated slugs for {eventsWithoutSlug.Count} existing events.");
+        }
     }
     catch (Exception ex)
     {

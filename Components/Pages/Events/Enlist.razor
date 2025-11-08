@@ -1,0 +1,474 @@
+@page "/e/{slug}/enlist"
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
+@inject ParticipantService ParticipantService
+@inject EmailRequest EmailService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Enlist - @(eventData?.Title ?? "Event")</PageTitle>
+
+@if (loading)
+{
+    <div class="container mt-5">
+        <p>Loading event...</p>
+    </div>
+}
+else if (eventData == null)
+{
+    <div class="container mt-5">
+        <div class="alert alert-danger">
+            <h4>Event Not Found</h4>
+            <p>The event you're looking for does not exist or has been removed.</p>
+        </div>
+    </div>
+}
+else if (enlistmentClosed)
+{
+    <div class="container mt-5">
+        <div class="alert alert-warning">
+            <h4>Enlistment Closed</h4>
+            <p>Enlistment for this event is currently closed.</p>
+            @if (DateTime.UtcNow < eventData.EnlistingStartDate)
+            {
+                <p>Opens on: <strong>@eventData.EnlistingStartDate.ToLocalTime().ToString("f")</strong></p>
+            }
+            else
+            {
+                <p>Closed on: <strong>@eventData.EnlistingEndDate.ToLocalTime().ToString("f")</strong></p>
+            }
+        </div>
+        @RenderEventInfo()
+    </div>
+}
+else if (alreadyEnlisted)
+{
+    <div class="container mt-5">
+        <div class="alert alert-success">
+            <h4>Already Enlisted</h4>
+            <p>You are already enlisted for this event.</p>
+            @if (currentParticipant != null)
+            {
+                <p>Status: <strong>@currentParticipant.Status</strong></p>
+                @if (currentParticipant.Status == ParticipantStatus.Waitlisted)
+                {
+                    <p><em>You're on the waitlist. You'll be notified if a spot opens up.</em></p>
+                }
+            }
+        </div>
+        @RenderEventInfo()
+        <div class="mt-3">
+            <button class="btn btn-danger" @onclick="ShowCancelConfirmation">Cancel My Participation</button>
+        </div>
+
+        @if (showCancelModal)
+        {
+            <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Confirm Cancellation</h5>
+                            <button type="button" class="btn-close" @onclick="() => showCancelModal = false"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Are you sure you want to cancel your participation?</p>
+                            @if (currentParticipant?.IsAnonymous == true)
+                            {
+                                <p class="text-danger"><strong>Warning:</strong> Your data will be permanently deleted.</p>
+                            }
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="() => showCancelModal = false">Keep My Spot</button>
+                            <button type="button" class="btn btn-danger" @onclick="ConfirmCancellation">Yes, Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="container mt-5">
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">@errorMessage</div>
+        }
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success">@successMessage</div>
+        }
+
+        @RenderEventInfo()
+
+        @if (isAuthenticated)
+        {
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h5 class="card-title">Enlist for This Event</h5>
+                    <p>You are logged in. Click below to enlist.</p>
+                    @if (eventFull && !eventData.EnableWaitlist)
+                    {
+                        <p class="text-danger">This event is full and waitlist is not enabled.</p>
+                    }
+                    else
+                    {
+                        @if (eventFull)
+                        {
+                            <p class="text-warning">Event is full. You will be added to the waitlist.</p>
+                        }
+                        <button class="btn btn-primary" @onclick="EnlistLoggedInUser" disabled="@submitting">
+                            @(submitting ? "Enlisting..." : "Enlist Now")
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h5 class="card-title">Enlist for This Event</h5>
+                    
+                    @if (!eventData.AllowedAnonymousEnlisting)
+                    {
+                        <p>Please <a href="/login?returnUrl=@Uri.EscapeDataString($"/e/{Slug}/enlist")">sign in</a> to enlist for this event.</p>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <p>You can <a href="/login?returnUrl=@Uri.EscapeDataString($"/e/{Slug}/enlist")">sign in</a> or enlist as a guest:</p>
+                        </div>
+
+                        @if (eventFull && !eventData.EnableWaitlist)
+                        {
+                            <p class="text-danger">This event is full and waitlist is not enabled.</p>
+                        }
+                        else
+                        {
+                            @if (eventFull)
+                            {
+                                <p class="text-warning">Event is full. You will be added to the waitlist.</p>
+                            }
+
+                            <form @onsubmit="EnlistAnonymousUser">
+                                <div class="mb-3">
+                                    <label class="form-label">Name *</label>
+                                    <input type="text" class="form-control" @bind="anonymousName" required />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Surname *</label>
+                                    <input type="text" class="form-control" @bind="anonymousSurname" required />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Email *</label>
+                                    <input type="email" class="form-control" @bind="anonymousEmail" required />
+                                </div>
+
+                                @if (!string.IsNullOrEmpty(eventData.ConsentText))
+                                {
+                                    <div class="mb-3">
+                                        <div class="border p-3 mb-2" style="max-height: 200px; overflow-y: auto; background: #f8f9fa;">
+                                            <pre style="white-space: pre-wrap; margin: 0;">@eventData.ConsentText</pre>
+                                        </div>
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="consentCheck" @bind="consentGiven" required />
+                                            <label class="form-check-label" for="consentCheck">
+                                                I agree to the terms above *
+                                            </label>
+                                        </div>
+                                    </div>
+                                }
+
+                                <button type="submit" class="btn btn-primary" disabled="@submitting">
+                                    @(submitting ? "Enlisting..." : "Enlist as Guest")
+                                </button>
+                            </form>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string Slug { get; set; } = string.Empty;
+
+    private Event? eventData;
+    private EventParticipant? currentParticipant;
+    private bool loading = true;
+    private bool isAuthenticated = false;
+    private int? currentUserId;
+    private string? currentUserEmail;
+    private bool alreadyEnlisted = false;
+    private bool enlistmentClosed = false;
+    private bool eventFull = false;
+    private bool submitting = false;
+    private bool showCancelModal = false;
+    private string? errorMessage;
+    private string? successMessage;
+
+    // Anonymous enlistment form
+    private string anonymousName = string.Empty;
+    private string anonymousSurname = string.Empty;
+    private string anonymousEmail = string.Empty;
+    private bool consentGiven = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        loading = true;
+
+        // Load event by slug
+        eventData = await DbContext.events.FirstOrDefaultAsync(e => e.Slug == Slug);
+
+        if (eventData == null)
+        {
+            loading = false;
+            return;
+        }
+
+        // Check enlistment window
+        var now = DateTime.UtcNow;
+        enlistmentClosed = now < eventData.EnlistingStartDate || now > eventData.EnlistingEndDate;
+
+        // Check capacity
+        var counts = await ParticipantService.GetParticipantCountsAsync(eventData.Id);
+        eventFull = eventData.MaxParticipants.HasValue && counts.Confirmed >= eventData.MaxParticipants.Value;
+
+        // Check authentication
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        isAuthenticated = user?.Identity?.IsAuthenticated ?? false;
+
+        if (isAuthenticated)
+        {
+            var userIdClaim = user!.FindFirst(ClaimTypes.NameIdentifier);
+            var emailClaim = user.FindFirst(ClaimTypes.Email);
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out var uid))
+            {
+                currentUserId = uid;
+                currentUserEmail = emailClaim?.Value;
+            }
+        }
+
+        // Check if already enlisted
+        currentParticipant = await ParticipantService.GetActiveParticipationAsync(
+            eventData.Id,
+            currentUserId,
+            currentUserEmail
+        );
+        alreadyEnlisted = currentParticipant != null;
+
+        loading = false;
+    }
+
+    private RenderFragment RenderEventInfo() => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "card mt-4");
+        builder.OpenElement(2, "div");
+        builder.AddAttribute(3, "class", "card-body");
+        
+        builder.OpenElement(4, "h3");
+        builder.AddContent(5, eventData?.Title ?? "Event");
+        builder.CloseElement();
+
+        builder.OpenElement(6, "div");
+        builder.AddAttribute(7, "class", "mt-3");
+        builder.OpenElement(8, "p");
+        builder.OpenElement(9, "strong");
+        builder.AddContent(10, "When:");
+        builder.CloseElement();
+        builder.AddContent(11, $" {eventData?.EventStartDate.ToLocalTime():f} - {eventData?.EventEndDate.ToLocalTime():f}");
+        builder.CloseElement();
+
+        builder.OpenElement(12, "p");
+        builder.OpenElement(13, "strong");
+        builder.AddContent(14, "Description:");
+        builder.CloseElement();
+        builder.CloseElement();
+        builder.OpenElement(15, "p");
+        builder.AddContent(16, eventData?.Description ?? "No description available.");
+        builder.CloseElement();
+
+        if (eventData?.MaxParticipants.HasValue == true)
+        {
+            var counts = ParticipantService.GetParticipantCountsAsync(eventData.Id).Result;
+            builder.OpenElement(17, "p");
+            builder.OpenElement(18, "strong");
+            builder.AddContent(19, "Capacity:");
+            builder.CloseElement();
+            builder.AddContent(20, $" {counts.Confirmed} / {eventData.MaxParticipants} confirmed");
+            if (counts.Waitlisted > 0)
+            {
+                builder.AddContent(21, $", {counts.Waitlisted} on waitlist");
+            }
+            builder.CloseElement();
+        }
+
+        builder.CloseElement(); // mt-3 div
+        builder.CloseElement(); // card-body
+        builder.CloseElement(); // card
+    };
+
+    private async Task EnlistLoggedInUser()
+    {
+        if (currentUserId == null || eventData == null) return;
+
+        submitting = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            var result = await ParticipantService.EnlistLoggedInUserAsync(currentUserId.Value, eventData.Id, eventData);
+            if (result.Success)
+            {
+                successMessage = result.Participant?.Status == ParticipantStatus.Waitlisted
+                    ? "You've been added to the waitlist."
+                    : result.Participant?.Status == ParticipantStatus.PendingApproval
+                    ? "Your participation is pending organizer approval."
+                    : "You're successfully enlisted!";
+                alreadyEnlisted = true;
+                currentParticipant = result.Participant;
+            }
+            else
+            {
+                errorMessage = result.Message ?? "Could not enlist. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            submitting = false;
+        }
+    }
+
+    private async Task EnlistAnonymousUser()
+    {
+        if (eventData == null || string.IsNullOrWhiteSpace(anonymousName) ||
+            string.IsNullOrWhiteSpace(anonymousSurname) || string.IsNullOrWhiteSpace(anonymousEmail))
+        {
+            errorMessage = "Please fill in all required fields.";
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(eventData.ConsentText) && !consentGiven)
+        {
+            errorMessage = "You must agree to the terms to continue.";
+            return;
+        }
+
+        submitting = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            var result = await ParticipantService.EnlistAnonymousUserAsync(
+                eventData.Id,
+                anonymousName.Trim(),
+                anonymousSurname.Trim(),
+                anonymousEmail.Trim(),
+                eventData,
+                eventData.ConsentText ?? string.Empty
+            );
+
+            if (result.Success && result.Participant != null)
+            {
+                // Generate confirmation token and send email
+                var token = ParticipantService.GenerateEmailConfirmToken(
+                    result.Participant.Id,
+                    eventData.Id,
+                    result.Participant.Email!
+                );
+                var confirmLink = $"{Navigation.BaseUri}e/{Slug}/confirm-email?token={Uri.EscapeDataString(token)}";
+
+                var emailBody = $@"Hello {anonymousName} {anonymousSurname},
+
+Thank you for enlisting for ""{eventData.Title}"".
+
+Please confirm your email address by clicking the link below within 24 hours:
+{confirmLink}
+
+Event Details:
+{eventData.Title}
+{eventData.EventStartDate.ToLocalTime():f} - {eventData.EventEndDate.ToLocalTime():f}
+
+{eventData.Description}
+
+If you did not request this, please ignore this email.
+
+---
+This is an automated message.";
+
+                EmailService.To = anonymousEmail.Trim();
+                EmailService.Subject = "Confirm Your Event Participation";
+                EmailService.Body = emailBody;
+                EmailService.SendEmail();
+
+                successMessage = "Check your email for a confirmation link. You have 24 hours to confirm.";
+                
+                // Clear form
+                anonymousName = string.Empty;
+                anonymousSurname = string.Empty;
+                anonymousEmail = string.Empty;
+                consentGiven = false;
+            }
+            else
+            {
+                errorMessage = result.Message ?? "Could not enlist. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            submitting = false;
+        }
+    }
+
+    private void ShowCancelConfirmation()
+    {
+        showCancelModal = true;
+    }
+
+    private async Task ConfirmCancellation()
+    {
+        if (currentParticipant == null || eventData == null) return;
+
+        showCancelModal = false;
+        submitting = true;
+
+        try
+        {
+            var success = await ParticipantService.CancelParticipationAsync(currentParticipant.Id, eventData.Id);
+            if (success)
+            {
+                successMessage = "Your participation has been cancelled.";
+                alreadyEnlisted = false;
+                currentParticipant = null;
+            }
+            else
+            {
+                errorMessage = "Could not cancel participation. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            submitting = false;
+        }
+    }
+}

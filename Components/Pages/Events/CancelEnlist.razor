@@ -1,0 +1,91 @@
+@page "/e/{slug}/cancel"
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
+@inject ParticipantService ParticipantService
+
+<PageTitle>Cancel Participation</PageTitle>
+
+<div class="container mt-5">
+    @if (loading)
+    {
+        <p>Processing cancellation...</p>
+    }
+    else if (success)
+    {
+        <div class="alert alert-success">
+            <h4>Participation Cancelled</h4>
+            <p>Your participation in <strong>@eventTitle</strong> has been cancelled.</p>
+            <p class="text-muted">Your data has been permanently removed from our records.</p>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-danger">
+            <h4>Cancellation Failed</h4>
+            <p>@errorMessage</p>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string Slug { get; set; } = string.Empty;
+
+    [SupplyParameterFromQuery]
+    public string? Token { get; set; }
+
+    private bool loading = true;
+    private bool success = false;
+    private string? errorMessage;
+    private string? eventTitle;
+
+    protected override async Task OnInitializedAsync()
+    {
+        loading = true;
+
+        if (string.IsNullOrEmpty(Token))
+        {
+            errorMessage = "No cancellation token provided.";
+            loading = false;
+            return;
+        }
+
+        try
+        {
+            // Parse token
+            if (!ParticipantService.TryParseCancelToken(Token, out var participantId, out var eventId, out var email))
+            {
+                errorMessage = "Invalid cancellation link.";
+                loading = false;
+                return;
+            }
+
+            // Load event for title
+            var eventData = await DbContext.events.FirstOrDefaultAsync(e => e.Id == eventId && e.Slug == Slug);
+            if (eventData == null)
+            {
+                errorMessage = "Event not found.";
+                loading = false;
+                return;
+            }
+            eventTitle = eventData.Title;
+
+            // Cancel participation (idempotent - if already cancelled, no error)
+            var cancelled = await ParticipantService.CancelParticipationAsync(participantId, eventId);
+            
+            success = cancelled;
+            if (!success)
+            {
+                errorMessage = "Could not cancel participation. The link may be invalid or already used.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}
