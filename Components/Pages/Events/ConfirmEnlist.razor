@@ -3,6 +3,7 @@
 @inject ApplicationDbContext DbContext
 @inject ParticipantService ParticipantService
 @inject NavigationManager Navigation
+@inject EmailRequest EmailService
 
 <PageTitle>Confirm Email - Event Participation</PageTitle>
 
@@ -133,6 +134,36 @@
                     ParticipantStatus.PendingApproval => "Your participation is pending organizer approval. You'll be notified once reviewed.",
                     _ => "Your email has been confirmed."
                 };
+
+                // Send follow-up email with cancellation link and event details
+                try
+                {
+                    var cancelLink = $"{Navigation.BaseUri}e/{Slug}/cancel?token={Uri.EscapeDataString(cancelToken)}";
+                    var mailBody = $@"Hello {participant.Name} {participant.Surname},
+
+Your email has been confirmed for: {eventData.Title}.
+
+If you later decide to withdraw, use this cancellation link (keep it for reference):
+{cancelLink}
+
+Event Details
+-------------
+Title: {eventData.Title}
+When: {eventData.EventStartDate.ToLocalTime():f} - {eventData.EventEndDate.ToLocalTime():f}
+
+Status: {participant.Status}
+
+---
+Automated message.";
+                    EmailService.To = email;
+                    EmailService.Subject = $"You're enlisted: {eventData.Title}";
+                    EmailService.Body = mailBody;
+                    EmailService.SendEmail();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to send confirmation follow-up email: {ex.Message}");
+                }
             }
 
             success = true;

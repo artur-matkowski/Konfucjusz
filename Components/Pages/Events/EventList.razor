@@ -58,7 +58,10 @@
                             }
                         </td>
                         <td>
-                            <button class="btn btn-sm btn-outline-primary" @onclick="() => EditEvent(evt.Id)">Edit</button>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => EditEvent(evt.Id)">Edit</button>
+                                <button class="btn btn-sm btn-outline-secondary" title="Send email to all participants" @onclick="() => MailAll(evt.Id)">Mail All</button>
+                            </div>
                         </td>
                     </tr>
                 }
@@ -150,5 +153,10 @@
     private void EditEvent(int eventId)
     {
         Nav.NavigateTo($"/events/edit/{eventId}");
+    }
+
+    private void MailAll(int eventId)
+    {
+        Nav.NavigateTo($"/events/mail-all/{eventId}");
     }
 }

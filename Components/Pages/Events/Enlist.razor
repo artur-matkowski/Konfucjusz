@@ -438,23 +438,41 @@ else
                 );
                 var confirmLink = $"{Navigation.BaseUri}e/{Slug}/confirm-email?token={Uri.EscapeDataString(token)}";
 
+                // Generate cancellation token & link (provide early convenience)
+                var cancelToken = ParticipantService.GenerateCancelToken(
+                    result.Participant.Id,
+                    eventData.Id,
+                    result.Participant.Email!
+                );
+                var cancelLink = $"{Navigation.BaseUri}e/{Slug}/cancel?token={Uri.EscapeDataString(cancelToken)}";
+
                 var emailBody = $@"Hello {anonymousName} {anonymousSurname},
 
-Thank you for enlisting for ""{eventData.Title}"".
+Thanks for starting your enlistment for the event: {eventData.Title}.
 
-Please confirm your email address by clicking the link below within 24 hours:
+STEP 1 (Required): Confirm your email within 24 hours:
 {confirmLink}
 
-Event Details:
-{eventData.Title}
-{eventData.EventStartDate.ToLocalTime():f} - {eventData.EventEndDate.ToLocalTime():f}
+If you don't confirm within 24 hours your pending enlistment will be automatically purged.
 
+STEP 2 (Optional): If you later decide to withdraw, use this cancellation link (keep it for reference):
+{cancelLink}
+
+Event Details
+-------------
+Title: {eventData.Title}
+When: {eventData.EventStartDate.ToLocalTime():f} - {eventData.EventEndDate.ToLocalTime():f}
+Enlisting Window: {eventData.EnlistingStartDate.ToLocalTime():f} → {eventData.EnlistingEndDate.ToLocalTime():f}
+
+Description:
 {eventData.Description}
 
-If you did not request this, please ignore this email.
+If the event is full you'll be placed on the waitlist automatically and promoted as spots free up.
+
+If you did not initiate this enlistment you can ignore this email and the pending record will disappear.
 
 ---
-This is an automated message.";
+Automated message. Do not reply.";
 
                 EmailService.To = anonymousEmail.Trim();
                 EmailService.Subject = "Confirm Your Event Participation";
