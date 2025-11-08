@@ -1,0 +1,134 @@
+@page "/user-self"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Components.Forms
+@inject AuthenticationStateProvider AuthStateProvider
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Db
+
+<div class="row">
+    <div class="col-lg-4 offset-lg-4 pt-4 pb-4 border">
+        <EditForm Model="@Model" OnValidSubmit="ChangePasswordAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <h3>Change password</h3>
+
+            @if (!string.IsNullOrWhiteSpace(StatusMessage))
+            {
+                <div class="alert @StatusCssClass" role="alert">@StatusMessage</div>
+            }
+
+            <div class="mb-3">
+                <label>Current password</label>
+                <InputText @bind-Value="Model.CurrentPassword" class="form-control" type="password" />
+                <ValidationMessage For="() => Model.CurrentPassword" />
+            </div>
+            <div class="mb-3">
+                <label>New password</label>
+                <InputText @bind-Value="Model.NewPassword" class="form-control" type="password" />
+                <ValidationMessage For="() => Model.NewPassword" />
+            </div>
+            <div class="mb-3">
+                <label>Confirm new password</label>
+                <InputText @bind-Value="Model.ConfirmPassword" class="form-control" type="password" />
+                <ValidationMessage For="() => Model.ConfirmPassword" />
+            </div>
+            <div class="mb-3 d-grid gap-2">
+                <button type="submit" class="btn btn-primary">Update password</button>
+            </div>
+        </EditForm>
+    </div>
+    
+</div>
+
+@code {
+    public class ChangePasswordModel
+    {
+        [Required]
+        public string? CurrentPassword { get; set; }
+        [Required]
+        [MinLength(6, ErrorMessage = "Password must be at least 6 characters long")]
+        public string? NewPassword { get; set; }
+        [Required]
+        public string? ConfirmPassword { get; set; }
+    }
+
+    private ChangePasswordModel Model { get; set; } = new();
+    private string? StatusMessage { get; set; }
+    private string StatusCssClass { get; set; } = "alert-info";
+
+    private async Task ChangePasswordAsync()
+    {
+        StatusMessage = null;
+        StatusCssClass = "alert-info";
+
+        if (Model.NewPassword != Model.ConfirmPassword)
+        {
+            StatusMessage = "New password and confirmation do not match.";
+            StatusCssClass = "alert-danger";
+            return;
+        }
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var principal = authState.User;
+            if (principal?.Identity?.IsAuthenticated != true)
+            {
+                StatusMessage = "You must be signed in to change your password.";
+                StatusCssClass = "alert-danger";
+                return;
+            }
+
+            var email = principal.Identity?.Name; // In this app, Name claim stores user email
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                StatusMessage = "Unable to resolve your user identity (email missing).";
+                StatusCssClass = "alert-danger";
+                return;
+            }
+
+            var user = await Db.users.Where(u => u.userEmail == email).FirstOrDefaultAsync();
+            if (user is null)
+            {
+                StatusMessage = "User not found.";
+                StatusCssClass = "alert-danger";
+                return;
+            }
+
+            if (string.IsNullOrEmpty(user.userPassword))
+            {
+                StatusMessage = "Your account has no password set. Please contact an administrator.";
+                StatusCssClass = "alert-danger";
+                return;
+            }
+
+            var hasher = new PasswordHasher<UserAccount>();
+            var verify = hasher.VerifyHashedPassword(user, user.userPassword, Model.CurrentPassword);
+            if (verify == PasswordVerificationResult.Failed)
+            {
+                StatusMessage = "Current password is incorrect.";
+                StatusCssClass = "alert-danger";
+                return;
+            }
+
+            // Rehash with current hasher
+            user.userPassword = hasher.HashPassword(user, Model.NewPassword!);
+            await Db.SaveChangesAsync();
+
+            StatusMessage = "Password updated successfully.";
+            StatusCssClass = "alert-success";
+            Model = new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = "An error occurred while updating the password.";
+            StatusCssClass = "alert-danger";
+        }
+    }
+}

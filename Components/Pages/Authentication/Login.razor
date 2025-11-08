@@ -14,8 +14,8 @@
                 <h3>Login</h3>
             </div>
             <div class="mb-3">
-                <label>User Name</label>
-                <InputText @bind-Value="Model.UserName" class="form-control" placeholder="eMail" />
+                <label>Email</label>
+                <InputText @bind-Value="Model.UserName" class="form-control" placeholder="email@example.com" />
                 <ValidationMessage For="() => Model.UserName" />
             </div>
             <div class="mb-3">
@@ -41,7 +41,7 @@
 
     public class LoginViewModel
     {
-        [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj nazwę użytkownika")]
+        [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj adres email")]
         public string? UserName { get; set; }
 
         [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj hasło")]
@@ -65,7 +65,8 @@
             return;
         }
 
-        UserAccount? userAccount = dbContext?.users?.Where( x => x.userName == Model.UserName).FirstOrDefault();
+        // Look up user by email instead of userName
+        UserAccount? userAccount = dbContext?.users?.Where( x => x.userEmail == Model.UserName).FirstOrDefault();
 
         if (userAccount is null)
         {
@@ -82,11 +83,12 @@
             return;
         }
 
-        Console.WriteLine($"----Logging in as {Model.UserName}, with roles {userAccount.userRole}");
+        Console.WriteLine($"----Logging in as {userAccount.userEmail}, with roles {userAccount.userRole}");
 
         var claims = new List<Claim>
         {
-            new Claim(ClaimTypes.Name, Model.UserName),
+            // Store email in Name claim so it can be used throughout the app
+            new Claim(ClaimTypes.Name, userAccount.userEmail ?? string.Empty),
         };
 
         // userAccount.userRole may contain multiple roles separated by commas. Split and add each as a separate claim.
