@@ -24,7 +24,8 @@ Services & DI
 - `UserService` (see `Services/UserService.cs`) provides basic CRUD against `users` DbSet. It uses synchronous EF calls (no async methods currently).
 
 Email and tokens
-- Email sending is implemented with MailKit in `Services/EmailRequest.cs`. SMTP host, port and credentials are currently hard-coded in the file (see `stmp.Connect(...)` and `stmp.Authenticate(...)`).
+- Email sending is implemented with MailKit in `Services/EmailRequest.cs`. SMTP settings come from config `Smtp:*` keys.
+- For Gmail SMTP setup, see README.md#gmail-smtp-setup (requires 2FA + app password).
 - Email verification token generation/consumption is implemented in `Schema/UserAccount.cs` using `DataProtectionProvider.Create("Konfucjusz")` and protector name `Konfucjusz.EmailVerification.v1`. Look here for the token payload format (id|userName|userPassword|userEmail|userRole).
 
 Conventions & gotchas (project-specific)

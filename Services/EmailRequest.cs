@@ -37,26 +37,56 @@ public class EmailRequest
 
     public void SendEmail()
     {
-        var email = new MimeMessage();
-        var fromAddress = _opts.From ?? string.Empty;
-        email.From.Add(MailboxAddress.Parse(fromAddress));
-        email.To.Add(MailboxAddress.Parse(To ?? string.Empty));
-        email.Subject = Subject;
-        email.Body = new TextPart(MimeKit.Text.TextFormat.Html)
-        {
-            Text = this.Body
-        };
+        // Validate required settings
+        if (string.IsNullOrEmpty(_opts.Host))
+            throw new InvalidOperationException("SMTP host is not configured. Check Smtp:Host in configuration.");
+        if (string.IsNullOrEmpty(_opts.From))
+            throw new InvalidOperationException("From address is not configured. Check Smtp:From in configuration.");
+        if (string.IsNullOrEmpty(To))
+            throw new ArgumentException("To address is not set.");
+        if (string.IsNullOrEmpty(Subject))
+            throw new ArgumentException("Email subject is not set.");
+        if (string.IsNullOrEmpty(Body))
+            throw new ArgumentException("Email body is not set.");
 
-        using var stmp = new SmtpClient();
-        var secure = _opts.UseStartTls ? SecureSocketOptions.StartTls : SecureSocketOptions.Auto;
-        stmp.Connect(_opts.Host ?? string.Empty, _opts.Port, secure);
-
-        if (!string.IsNullOrEmpty(_opts.Username))
+        try
         {
-            stmp.Authenticate(_opts.Username, _opts.Password ?? string.Empty);
+            var email = new MimeMessage();
+            email.From.Add(MailboxAddress.Parse(_opts.From));
+            email.To.Add(MailboxAddress.Parse(To));
+            email.Subject = Subject;
+            email.Body = new TextPart(MimeKit.Text.TextFormat.Html)
+            {
+                Text = Body
+            };
+
+            using var smtp = new SmtpClient();
+            
+            // Log connection attempt
+            Console.WriteLine($"Connecting to SMTP server {_opts.Host}:{_opts.Port} (UseStartTls: {_opts.UseStartTls})");
+            
+            var secure = _opts.UseStartTls ? SecureSocketOptions.StartTls : SecureSocketOptions.Auto;
+            smtp.Connect(_opts.Host, _opts.Port, secure);
+
+            if (!string.IsNullOrEmpty(_opts.Username))
+            {
+                Console.WriteLine($"Authenticating as {_opts.Username}");
+                smtp.Authenticate(_opts.Username, _opts.Password ?? string.Empty);
+            }
+
+            Console.WriteLine("Sending email...");
+            smtp.Send(email);
+            smtp.Disconnect(true);
+            Console.WriteLine("Email sent successfully!");
         }
-
-        stmp.Send(email);
-        stmp.Disconnect(true);
+        catch (Exception ex)
+        {
+            var error = $"Failed to send email: {ex.Message}";
+            if (ex.InnerException != null)
+                error += $"\nInner error: {ex.InnerException.Message}";
+            
+            Console.WriteLine(error);
+            throw new Exception(error, ex);
+        }
     }
 }
