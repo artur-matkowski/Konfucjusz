@@ -9,6 +9,7 @@
 @inject ApplicationDbContext dbContext
 @inject Microsoft.AspNetCore.DataProtection.IDataProtectionProvider DataProtectionProvider
 @inject NavigationManager navigationManager
+@inject EmailRequest emailService
 @using System.Net
 @using System.Text
 @using Microsoft.EntityFrameworkCore
@@ -242,10 +243,8 @@
     {
         try
         {
-            EmailRequest emailRequest = new();
-
-            emailRequest.To = to;
-            emailRequest.Subject = "[Dummy] Verify your account";
+            emailService.To = to;
+            emailService.Subject = "[Dummy] Verify your account";
             // fetch the just-saved user from the database to include identifying data in the token
             var user = await dbContext.users.Where(u => (u.userName == userName) && (u.userEmail == to)).FirstOrDefaultAsync();
             if (user is null)
@@ -260,11 +259,11 @@
             var baseUri = navigationManager.BaseUri?.TrimEnd('/') ?? string.Empty;
             var verificationLink = $"{baseUri}/validatemail?token={encoded}";
 
-            emailRequest.Body = $"Hello {user.userName},\n\nThank you for registering.\nPlease click the link below to verify your email address:\n{verificationLink}\n\n-- Konfucjusz";
+            emailService.Body = $"Hello {user.userName},\n\nThank you for registering.\nPlease click the link below to verify your email address:\n{verificationLink}\n\n-- Konfucjusz";
 
             // send the email (may fail in dev if no SMTP server)
             // EmailRequest.SendEmail may be synchronous; run it off the sync context to avoid blocking.
-            await Task.Run(() => emailRequest.SendEmail());
+            await Task.Run(() => emailService.SendEmail());
 
             VerificationEmailStatus = $"Link weryfikujący adres e-Mail zostal wyslany na twoją skrzynkę.\n\nOtwórz go i kliknij, aby potwierdzic adres.";
         }

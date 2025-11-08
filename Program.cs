@@ -53,6 +53,22 @@ app.UseAuthorization();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
+// Apply EF migrations and seed initial data on startup (helpful for onboarding).
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        db.Database.Migrate();
+    }
+    catch (Exception ex)
+    {
+        // Log to console; in production you might rethrow or use proper logging.
+        Console.WriteLine($"Error applying migrations or seeding database: {ex}");
+        throw;
+    }
+}
+
 // Lightweight endpoint to sign in a just-registered user and set the auth cookie.
 // This performs a full HTTP response so the Set-Cookie header is sent to the browser.
 app.MapGet("/account/signin", async (HttpContext http) =>
