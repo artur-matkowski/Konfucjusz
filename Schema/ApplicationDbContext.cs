@@ -14,4 +14,18 @@ public class ApplicationDbContext: DbContext
     }
 
     public DbSet<UserAccount> users { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        // Ensure the creation_timestamp column has a DB-side default of now() (Postgres)
+        modelBuilder.Entity<UserAccount>(eb =>
+        {
+            eb.Property(e => e.creationTimestamp)
+                .HasColumnName("creation_timestamp")
+                .HasDefaultValueSql("now()")
+                .ValueGeneratedOnAdd();
+        });
+    }
 }
