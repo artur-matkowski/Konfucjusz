@@ -24,7 +24,10 @@
                 <ValidationMessage For="() => Model.Password" />
             </div>
             <div class="mb-3 text-center">
-                <span class="text-danger"></span>
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <span class="text-danger">@errorMessage</span>
+                }
             </div>
             <div class="mb-3 d-grid gap-2">
                 <button type="submit" class="btn btn-primary">Login</button>
@@ -70,6 +73,7 @@
 
         if (userAccount is null)
         {
+            errorMessage = "Invalid email or password.";
             return;
         }
 
@@ -80,6 +84,7 @@
         var verification = hasher.VerifyHashedPassword(userAccount, hashed, provided);
         if (verification == PasswordVerificationResult.Failed)
         {
+            errorMessage = "Invalid email or password.";
             return;
         }
 
@@ -106,6 +111,10 @@
 
         await HttpContext.SignInAsync(principal);
 
+        errorMessage = string.Empty; // clear any prior errors on success
         navigationManager.NavigateTo("/");
+    }
+
+    private string? errorMessage;
     }
 }

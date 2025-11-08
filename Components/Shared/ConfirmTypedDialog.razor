@@ -1,0 +1,59 @@
+@using Microsoft.AspNetCore.Components
+
+@inherits ComponentBase
+
+@*
+  Simple confirmation dialog that requires the user to type an expected text
+  before enabling the Confirm button. Non-blocking, controlled by parent via
+  the `Visible` boolean. Parent must handle OnConfirm/OnCancel callbacks.
+*@
+
+@if (Visible)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1050;display:flex;align-items:center;justify-content:center;">
+        <div class="card" style="width:520px;max-width:95%;">
+            <div class="card-body">
+                <h5 class="card-title">@Title</h5>
+                <p class="card-text">@Message</p>
+
+                @if (!string.IsNullOrEmpty(ExpectedText))
+                {
+                    <div class="mb-2"><small class="text-muted">Please type exactly: <code>@ExpectedText</code></small></div>
+                }
+
+                <input class="form-control mb-3" @bind="typedText" placeholder="Type confirmation text here" />
+
+                <div class="d-flex justify-content-end gap-2">
+                    <button class="btn btn-secondary" @onclick="OnCancelClicked">Cancel</button>
+                    <button class="btn btn-danger" disabled="@(!IsMatch)" @onclick="OnConfirmClicked">Confirm delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public string Title { get; set; } = "Confirm";
+    [Parameter] public string Message { get; set; } = "Please confirm action.";
+    [Parameter] public string ExpectedText { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private string typedText = string.Empty;
+
+    private bool IsMatch => string.Equals(typedText ?? string.Empty, ExpectedText ?? string.Empty, StringComparison.Ordinal);
+
+    private async Task OnConfirmClicked()
+    {
+        if (!IsMatch) return;
+        typedText = string.Empty;
+        await OnConfirm.InvokeAsync(null);
+    }
+
+    private async Task OnCancelClicked()
+    {
+        typedText = string.Empty;
+        await OnCancel.InvokeAsync(null);
+    }
+}

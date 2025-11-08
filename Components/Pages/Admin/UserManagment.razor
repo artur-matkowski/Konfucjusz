@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @inherits OwningComponentBase<UserService>
 @using Microsoft.AspNetCore.Authorization
+@using Konfucjusz.Components.Shared
 @attribute [Authorize(Roles = "Administrator")]
 
 
@@ -43,7 +44,7 @@
                             <div class="d-flex gap-2">
                                 <button class="btn btn-sm btn-primary" @onclick="() => Save(item)">Save</button>
                                 <button class="btn btn-sm btn-secondary" @onclick="() => CancelEdit(item.Id)">Cancel</button>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => Remove(item.userEmail)">Remove</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => PromptRemoveUser(item.userEmail)">Remove</button>
                             </div>
                         </td>
                     }
@@ -76,7 +77,7 @@
                         <td>
                             <div class="d-flex gap-2">
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditedIds.Add(item.Id)">Edit</button>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => Remove(item.userEmail)">Remove</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => PromptRemoveUser(item.userEmail)">Remove</button>
                             </div>
                         </td>
                     }
@@ -89,6 +90,36 @@
 <div class="mt-3">
     <button class="btn btn-primary" @onclick="AddNewUser">Add new user</button>
 </div>
+
+@if (showDeleteUserDialog && pendingUserForDeletion is not null)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1050;display:flex;align-items:center;justify-content:center;">
+        <div class="card" style="width:560px;max-width:95%;">
+            <div class="card-body">
+                <h5 class="card-title">Confirm user deletion</h5>
+                <p class="card-text mb-2">You're about to permanently delete this user. Review the details carefully.</p>
+                <table class="table table-sm mb-3">
+                    <tbody class="small">
+                        <tr><th scope="row" class="text-muted">Id</th><td>@pendingUserForDeletion.Id</td></tr>
+                        <tr><th scope="row" class="text-muted">Created</th><td>@(pendingUserForDeletion.creationTimestamp.ToString("g") ?? "-")</td></tr>
+                        <tr><th scope="row" class="text-muted">Name</th><td>@pendingUserForDeletion.userName</td></tr>
+                        <tr><th scope="row" class="text-muted">Surname</th><td>@pendingUserForDeletion.surname</td></tr>
+                        <tr><th scope="row" class="text-muted">Email</th><td>@pendingUserForDeletion.userEmail</td></tr>
+                        <tr><th scope="row" class="text-muted">Role(s)</th><td>@pendingUserForDeletion.userRole</td></tr>
+                        <tr><th scope="row" class="text-muted">Mail validated</th><td>@(pendingUserForDeletion.mailValidated ? "Yes" : "No")</td></tr>
+                        <tr><th scope="row" class="text-muted">Admin approved</th><td>@(pendingUserForDeletion.userCreationConfirmedByAdmin ? "Yes" : "No")</td></tr>
+                    </tbody>
+                </table>
+                <div class="mb-2"><small class="text-muted">Type the email <code>@deleteUserExpectedText</code> to confirm deletion.</small></div>
+                <input class="form-control mb-3" @bind="typedDeleteUserText" placeholder="Type email here" />
+                <div class="d-flex justify-content-end gap-2">
+                    <button class="btn btn-secondary" @onclick="CancelDeleteUser">Cancel</button>
+                    <button class="btn btn-danger" disabled="@(typedDeleteUserText != deleteUserExpectedText)" @onclick="ConfirmDeleteUser">Delete user</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 @code{
     public System.Collections.Generic.IList<UserAccount> sc = default!;
@@ -145,4 +176,49 @@
         Service.Remove(id);
         sc = Service.GetUsers();
     }
+
+    // typed-confirmation flow
+    private bool showDeleteUserDialog = false;
+    private string? deleteUserExpectedText;
+    private string? deleteUserMailPending;
+    private string typedDeleteUserText = string.Empty;
+
+    private void PromptRemoveUser(string? userEmail)
+    {
+        if (string.IsNullOrEmpty(userEmail)) return;
+        deleteUserMailPending = userEmail;
+        pendingUserForDeletion = sc.FirstOrDefault(u => u.userEmail == userEmail);
+        deleteUserExpectedText = userEmail; // require exact email
+        typedDeleteUserText = string.Empty;
+        showDeleteUserDialog = true;
+    }
+
+    private void CancelDeleteUser()
+    {
+        showDeleteUserDialog = false;
+        deleteUserMailPending = null;
+        deleteUserExpectedText = null;
+        pendingUserForDeletion = null;
+        typedDeleteUserText = string.Empty;
+    }
+
+    private void ConfirmDeleteUser()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(deleteUserExpectedText) && typedDeleteUserText == deleteUserExpectedText)
+            {
+                Service.Remove(deleteUserMailPending);
+                sc = Service.GetUsers();
+            }
+        }
+        finally
+        {
+            // always clear dialog state
+            typedDeleteUserText = string.Empty;
+            CancelDeleteUser();
+        }
+    }
+
+    private UserAccount? pendingUserForDeletion;
 }
