@@ -1,0 +1,20 @@
+{
+  "ConnectionStrings": {
+    "MyConnection": "Host=192.168.74.200;Port=5432;Database=konfucjusz_db;Username=konfucjusz;Password=<DB_PASSWORD>"
+  },
+  "Smtp": {
+    "Host": "smtp.example.com",
+    "Port": 587,
+    "UseStartTls": true,
+    "Username": "your-smtp-username",
+    "Password": "your-smtp-password",
+    "From": "noreply@example.com"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}
