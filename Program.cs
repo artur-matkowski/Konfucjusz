@@ -18,6 +18,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<EventService>();
 // Bind SMTP settings and register EmailRequest for DI. Put real secrets in user-secrets or environment variables.
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
 builder.Services.AddScoped<EmailRequest>();
