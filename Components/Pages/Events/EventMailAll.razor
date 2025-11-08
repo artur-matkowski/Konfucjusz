@@ -1,0 +1,218 @@
+@page "/events/mail-all/{EventId:int}"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = "Administrator,Organizer")]
+@inject ApplicationDbContext Db
+@inject ParticipantService ParticipantSvc
+@inject EventService EventSvc
+@inject EmailRequest EmailService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<h3>Mass Email Participants</h3>
+
+@if (!CanManageEvent)
+{
+    <div class="alert alert-danger">You do not have permission to email participants of this event.</div>
+    <a href="/events" class="btn btn-secondary">Back to Events</a>
+    return;
+}
+
+@if (!string.IsNullOrEmpty(StatusMessage))
+{
+    <div class="alert @StatusCss">@StatusMessage</div>
+}
+
+@if (CurrentEvent == null)
+{
+    <div class="alert alert-warning">Event not found.</div>
+    <a href="/events" class="btn btn-secondary">Back</a>
+}
+else
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">@CurrentEvent.Title</h5>
+            <p class="mb-1"><strong>When:</strong> @CurrentEvent.EventStartDate.ToLocalTime():f - @CurrentEvent.EventEndDate.ToLocalTime():f</p>
+            <p class="mb-1"><strong>Confirmed:</strong> @Counts?.Confirmed | <strong>Waitlisted:</strong> @Counts?.Waitlisted | <strong>Pending Approval:</strong> @Counts?.PendingApproval | <strong>Pending Email:</strong> @Counts?.PendingEmail</p>
+            <small class="text-muted">Only participants with an email (anonymous confirmed or logged-in account) will receive messages.</small>
+        </div>
+    </div>
+
+    <form @onsubmit="SendMassEmailAsync">
+        <div class="mb-3">
+            <label class="form-label">Subject *</label>
+            <input type="text" class="form-control" @bind="EmailSubject" required />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Message *</label>
+            <textarea class="form-control" rows="8" @bind="EmailBody" required placeholder="Write the email body here..."></textarea>
+            <small class="text-muted">You can include event details manually; no template expansion is performed.</small>
+        </div>
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="includeWaitlist" @bind="IncludeWaitlisted" />
+            <label for="includeWaitlist" class="form-check-label">Include Waitlisted Participants</label>
+        </div>
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="includePendingApproval" @bind="IncludePendingApproval" />
+            <label for="includePendingApproval" class="form-check-label">Include Pending Approval Participants</label>
+        </div>
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="includePendingEmail" @bind="IncludePendingEmail" />
+            <label for="includePendingEmail" class="form-check-label">Include Pending Email Participants (anonymous not yet confirmed)</label>
+        </div>
+        <button type="submit" class="btn btn-primary" disabled="@Sending">@(Sending ? "Sending..." : "Send Email")</button>
+        <a href="/events/edit/@EventId" class="btn btn-secondary ms-2">Back to Edit</a>
+    </form>
+
+    @if (PreviewRecipients != null)
+    {
+        <div class="mt-4">
+            <h6>Recipient Preview (@PreviewRecipients.Count)</h6>
+            @if (!PreviewRecipients.Any())
+            {
+                <p class="text-muted">No recipients match the current selection.</p>
+            }
+            else
+            {
+                <ul class="list-unstyled" style="max-height:200px;overflow-y:auto;">
+                    @foreach (var r in PreviewRecipients)
+                    {
+                        <li>@r</li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int EventId { get; set; }
+
+    private Event? CurrentEvent { get; set; }
+    private ParticipantCounts? Counts { get; set; }
+    private bool CanManageEvent { get; set; }
+    private string CurrentUserRole { get; set; } = string.Empty;
+    private int CurrentUserId { get; set; }
+
+    private string? StatusMessage { get; set; }
+    private string StatusCss { get; set; } = "alert-info";
+
+    private string EmailSubject { get; set; } = string.Empty;
+    private string EmailBody { get; set; } = string.Empty;
+    private bool IncludeWaitlisted { get; set; } = true;
+    private bool IncludePendingApproval { get; set; } = true;
+    private bool IncludePendingEmail { get; set; } = false;
+    private bool Sending { get; set; } = false;
+
+    private List<string> PreviewRecipients { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user?.Identity?.IsAuthenticated != true)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        var email = user.Identity?.Name;
+        var userAccount = await Db.users.FirstOrDefaultAsync(u => u.userEmail == email);
+        if (userAccount == null)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        CurrentUserId = userAccount.Id;
+        CurrentUserRole = userAccount.userRole ?? string.Empty;
+
+        CurrentEvent = await Db.events.FindAsync(EventId);
+        if (CurrentEvent == null)
+        {
+            StatusMessage = "Event not found.";
+            StatusCss = "alert-danger";
+            return;
+        }
+
+        CanManageEvent = await EventSvc.CanUserManageEventAsync(CurrentUserId, EventId, CurrentUserRole);
+        if (!CanManageEvent) return;
+
+        Counts = await ParticipantSvc.GetParticipantCountsAsync(EventId);
+        await BuildPreviewAsync();
+    }
+
+    private async Task<List<EventParticipant>> LoadParticipantsAsync()
+    {
+        return await ParticipantSvc.GetParticipantsForEventAsync(EventId);
+    }
+
+    private async Task BuildPreviewAsync()
+    {
+        PreviewRecipients.Clear();
+        var all = await LoadParticipantsAsync();
+        foreach (var p in all)
+        {
+            if (p.IsAnonymous)
+            {
+                if (!p.EmailConfirmed && !IncludePendingEmail) continue;
+                if (string.IsNullOrEmpty(p.Email)) continue;
+            }
+            // status filters
+            var status = p.Status;
+            bool include = status == ParticipantStatus.Confirmed;
+            include |= IncludeWaitlisted && status == ParticipantStatus.Waitlisted;
+            include |= IncludePendingApproval && status == ParticipantStatus.PendingApproval;
+            include |= IncludePendingEmail && status == ParticipantStatus.PendingEmail;
+            if (!include) continue;
+
+            var recipientEmail = p.IsAnonymous ? p.Email : p.User?.userEmail;
+            if (!string.IsNullOrWhiteSpace(recipientEmail))
+            {
+                PreviewRecipients.Add(recipientEmail!);
+            }
+        }
+    }
+
+    private async Task SendMassEmailAsync()
+    {
+        if (Sending) return;
+        if (string.IsNullOrWhiteSpace(EmailSubject) || string.IsNullOrWhiteSpace(EmailBody))
+        {
+            StatusMessage = "Subject and body are required.";
+            StatusCss = "alert-warning";
+            return;
+        }
+
+        Sending = true;
+        StatusMessage = null;
+
+        try
+        {
+            await BuildPreviewAsync();
+            int sent = 0;
+            foreach (var to in PreviewRecipients)
+            {
+                EmailService.To = to;
+                EmailService.Subject = EmailSubject.Trim();
+                EmailService.Body = EmailBody.Trim();
+                EmailService.SendEmail();
+                sent++;
+            }
+
+            StatusMessage = $"Email sent to {sent} participants.";
+            StatusCss = "alert-success";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = "Error sending emails.";
+            StatusCss = "alert-danger";
+        }
+        finally
+        {
+            Sending = false;
+        }
+    }
+}

@@ -10,6 +10,7 @@
 @inject ApplicationDbContext Db
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject EmailRequest EmailService
 
 <h3>Edit Event</h3>
 
@@ -420,6 +421,60 @@
 
             StatusMessage = "Event updated successfully.";
             StatusCss = "alert-success";
+
+            // After a successful save, notify participants of updated event details
+            await LoadParticipantsAsync();
+            var notifyStatuses = new HashSet<string>
+            {
+                ParticipantStatus.Confirmed,
+                ParticipantStatus.Waitlisted,
+                ParticipantStatus.PendingApproval,
+                ParticipantStatus.PendingEmail // optional: include pending email so they see changes before confirming
+            };
+            int sent = 0;
+            string subject = $"Updated event details: {CurrentEvent.Title}";
+            var waitlistText = CurrentEvent.EnableWaitlist ? "Yes" : "No";
+            var approvalText = CurrentEvent.RequireOrganizerApproval ? "Yes" : "No";
+            var maxText = CurrentEvent.MaxParticipants?.ToString() ?? "Unlimited";
+            string body = $@"Hello,
+
+The event you are enlisted in has updated details.
+
+Title: {CurrentEvent.Title}
+Description: {CurrentEvent.Description}
+Event Window: {CurrentEvent.EventStartDate.ToLocalTime():f} - {CurrentEvent.EventEndDate.ToLocalTime():f}
+Enlisting Window: {CurrentEvent.EnlistingStartDate.ToLocalTime():f} - {CurrentEvent.EnlistingEndDate.ToLocalTime():f}
+Waitlist Enabled: {waitlistText}
+Requires Organizer Approval: {approvalText}
+Max Participants: {maxText}
+
+If you can no longer attend you may cancel via the cancellation link you received earlier. If you were waitlisted you will be informed automatically when promoted.
+
+---
+Automated notification.";
+
+            foreach (var p in Participants)
+            {
+                if (!notifyStatuses.Contains(p.Status)) continue;
+                string? to = p.IsAnonymous ? (p.EmailConfirmed ? p.Email : null) : p.User?.userEmail;
+                if (string.IsNullOrWhiteSpace(to)) continue;
+                try
+                {
+                    EmailService.To = to;
+                    EmailService.Subject = subject;
+                    EmailService.Body = body;
+                    EmailService.SendEmail();
+                    sent++;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed sending update to {to}: {ex.Message}");
+                }
+            }
+            if (sent > 0)
+            {
+                StatusMessage += $" Notification email sent to {sent} participant(s).";
+            }
         }
         catch (Exception ex)
         {
