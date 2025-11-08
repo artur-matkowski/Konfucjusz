@@ -5,9 +5,11 @@
 @using Microsoft.EntityFrameworkCore
 @attribute [Authorize(Roles = "Administrator,Organizer")]
 @inject EventService EventSvc
+@inject ParticipantService ParticipantSvc
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ApplicationDbContext Db
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <h3>Edit Event</h3>
 
@@ -80,6 +82,31 @@
             </div>
         </div>
 
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" @bind="CurrentEvent.EnableWaitlist" id="enableWaitlist" />
+                    <label class="form-check-label" for="enableWaitlist">Enable Waitlist</label>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" @bind="CurrentEvent.RequireOrganizerApproval" id="requireApproval" />
+                    <label class="form-check-label" for="requireApproval">Require Organizer Approval</label>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label>Max Participants</label>
+                <input type="number" class="form-control" @bind="CurrentEvent.MaxParticipants" placeholder="Unlimited" />
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label>Consent Text (for anonymous participants)</label>
+            <textarea class="form-control" rows="4" @bind="CurrentEvent.ConsentText" placeholder="Enter consent text or terms..."></textarea>
+            <small class="form-text text-muted">This will be shown to anonymous users when they enlist.</small>
+        </div>
+
         <div class="mb-3">
             <button type="button" class="btn btn-primary" @onclick="SaveEventAsync">Save Event</button>
             <a href="/events" class="btn btn-secondary">Cancel</a>
@@ -137,6 +164,153 @@
             }
         </tbody>
     </table>
+
+    <hr class="my-4" />
+
+    <h4>Enlist Link</h4>
+    @if (!string.IsNullOrEmpty(CurrentEvent.Slug))
+    {
+        var enlistUrl = $"{Nav.BaseUri}e/{CurrentEvent.Slug}/enlist";
+        <div class="mb-3">
+            <div class="input-group">
+                <input type="text" class="form-control" readonly value="@enlistUrl" id="enlistLinkInput" />
+                <button class="btn btn-outline-secondary" @onclick="() => CopyToClipboard(enlistUrl)">
+                    <i class="bi bi-clipboard"></i> Copy
+                </button>
+            </div>
+            <small class="form-text text-muted">Share this link for people to enlist to your event.</small>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-warning">Slug not generated yet. Save the event first.</div>
+    }
+
+    <hr class="my-4" />
+
+    <h4>Participants</h4>
+
+    @if (ParticipantCounts != null)
+    {
+        <div class="mb-3">
+            <span class="badge bg-success me-2">Confirmed: @ParticipantCounts.Confirmed</span>
+            <span class="badge bg-warning me-2">Waitlisted: @ParticipantCounts.Waitlisted</span>
+            <span class="badge bg-info me-2">Pending Email: @ParticipantCounts.PendingEmail</span>
+            <span class="badge bg-secondary me-2">Pending Approval: @ParticipantCounts.PendingApproval</span>
+            <span class="badge bg-danger me-2">Declined: @ParticipantCounts.Declined</span>
+            @if (CurrentEvent.MaxParticipants.HasValue)
+            {
+                <span class="text-muted">/ Max: @CurrentEvent.MaxParticipants</span>
+            }
+        </div>
+    }
+
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link @(ParticipantFilter == null ? "active" : "")" @onclick="() => FilterParticipants(null)" style="cursor:pointer;">All</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(ParticipantFilter == ParticipantStatus.Confirmed ? "active" : "")" @onclick="() => FilterParticipants(ParticipantStatus.Confirmed)" style="cursor:pointer;">Confirmed</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(ParticipantFilter == ParticipantStatus.PendingEmail ? "active" : "")" @onclick="() => FilterParticipants(ParticipantStatus.PendingEmail)" style="cursor:pointer;">Pending Email</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(ParticipantFilter == ParticipantStatus.PendingApproval ? "active" : "")" @onclick="() => FilterParticipants(ParticipantStatus.PendingApproval)" style="cursor:pointer;">Pending Approval</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(ParticipantFilter == ParticipantStatus.Waitlisted ? "active" : "")" @onclick="() => FilterParticipants(ParticipantStatus.Waitlisted)" style="cursor:pointer;">Waitlisted</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(ParticipantFilter == ParticipantStatus.Declined ? "active" : "")" @onclick="() => FilterParticipants(ParticipantStatus.Declined)" style="cursor:pointer;">Declined</a>
+        </li>
+    </ul>
+
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Enlisted</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Participants == null || !Participants.Any())
+            {
+                <tr><td colspan="6" class="text-muted">No participants yet.</td></tr>
+            }
+            else
+            {
+                @foreach (var p in Participants)
+                {
+                    <tr>
+                        <td>@p.GetDisplayName()</td>
+                        <td>@p.GetDisplayEmail()</td>
+                        <td>
+                            @if (p.IsAnonymous)
+                            {
+                                <span class="badge bg-secondary">Anonymous</span>
+                                @if (p.EmailConfirmed)
+                                {
+                                    <span class="badge bg-success">✓ Email</span>
+                                }
+                            }
+                            else
+                            {
+                                <span class="badge bg-primary">Logged-in</span>
+                            }
+                        </td>
+                        <td>
+                            @if (p.Status == ParticipantStatus.Confirmed)
+                            {
+                                <span class="badge bg-success">Confirmed</span>
+                            }
+                            else if (p.Status == ParticipantStatus.Waitlisted)
+                            {
+                                <span class="badge bg-warning">Waitlisted</span>
+                            }
+                            else if (p.Status == ParticipantStatus.PendingEmail)
+                            {
+                                <span class="badge bg-info">Pending Email</span>
+                            }
+                            else if (p.Status == ParticipantStatus.PendingApproval)
+                            {
+                                <span class="badge bg-secondary">Pending Approval</span>
+                            }
+                            else if (p.Status == ParticipantStatus.Declined)
+                            {
+                                <span class="badge bg-danger">Declined</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-light text-dark">@p.Status</span>
+                            }
+                        </td>
+                        <td>@p.CreatedAt.ToLocalTime().ToString("g")</td>
+                        <td>
+                            @if (p.Status == ParticipantStatus.PendingApproval)
+                            {
+                                <button class="btn btn-sm btn-success me-1" @onclick="() => ApproveParticipantAsync(p.Id)">Approve</button>
+                                <button class="btn btn-sm btn-danger" @onclick="() => DeclineParticipantAsync(p.Id)">Decline</button>
+                            }
+                            else if (p.Status == ParticipantStatus.Waitlisted)
+                            {
+                                <button class="btn btn-sm btn-primary me-1" @onclick="() => PromoteParticipantAsync(p.Id)">Promote</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveParticipantAsync(p.Id)">Remove</button>
+                            }
+                            else if (p.Status == ParticipantStatus.Confirmed || p.Status == ParticipantStatus.PendingEmail)
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveParticipantAsync(p.Id)">Remove</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
 }
 
 @if (showDeleteDialog)
@@ -162,6 +336,9 @@
 
     private Event? CurrentEvent { get; set; }
     private List<UserAccount> Organizers { get; set; } = new();
+    private List<EventParticipant> Participants { get; set; } = new();
+    private ParticipantCounts? ParticipantCounts { get; set; }
+    private string? ParticipantFilter { get; set; }
     private bool CanManageEvent { get; set; }
     private bool IsAdmin { get; set; }
     private int CurrentUserId { get; set; }
@@ -212,11 +389,24 @@
         }
 
         await LoadOrganizersAsync();
+        await LoadParticipantsAsync();
     }
 
     private async Task LoadOrganizersAsync()
     {
         Organizers = await EventSvc.GetOrganizersForEventAsync(EventId);
+    }
+
+    private async Task LoadParticipantsAsync()
+    {
+        ParticipantCounts = await ParticipantSvc.GetParticipantCountsAsync(EventId);
+        Participants = await ParticipantSvc.GetParticipantsForEventAsync(EventId, ParticipantFilter);
+    }
+
+    private async Task FilterParticipants(string? status)
+    {
+        ParticipantFilter = status;
+        await LoadParticipantsAsync();
     }
 
     private async Task SaveEventAsync()
@@ -336,6 +526,135 @@
             StatusMessage = "Error deleting event.";
             StatusCss = "alert-danger";
             showDeleteDialog = false;
+        }
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            StatusMessage = "Link copied to clipboard!";
+            StatusCss = "alert-success";
+        }
+        catch
+        {
+            StatusMessage = "Could not copy to clipboard. Please copy manually.";
+            StatusCss = "alert-warning";
+        }
+    }
+
+    private async Task ApproveParticipantAsync(int participantId)
+    {
+        try
+        {
+            var success = await ParticipantSvc.ApproveParticipantAsync(participantId);
+            if (success)
+            {
+                StatusMessage = "Participant approved.";
+                StatusCss = "alert-success";
+                await LoadParticipantsAsync();
+            }
+            else
+            {
+                StatusMessage = "Could not approve participant.";
+                StatusCss = "alert-warning";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = "Error approving participant.";
+            StatusCss = "alert-danger";
+        }
+    }
+
+    private async Task DeclineParticipantAsync(int participantId)
+    {
+        try
+        {
+            var success = await ParticipantSvc.DeclineParticipantAsync(participantId);
+            if (success)
+            {
+                StatusMessage = "Participant declined.";
+                StatusCss = "alert-success";
+                await LoadParticipantsAsync();
+            }
+            else
+            {
+                StatusMessage = "Could not decline participant.";
+                StatusCss = "alert-warning";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = "Error declining participant.";
+            StatusCss = "alert-danger";
+        }
+    }
+
+    private async Task PromoteParticipantAsync(int participantId)
+    {
+        try
+        {
+            // Check if there's capacity
+            if (CurrentEvent?.MaxParticipants.HasValue == true &&
+                ParticipantCounts != null &&
+                ParticipantCounts.Confirmed >= CurrentEvent.MaxParticipants.Value)
+            {
+                StatusMessage = "Event is at capacity. Cannot promote.";
+                StatusCss = "alert-warning";
+                return;
+            }
+
+            // Manually promote specific participant
+            var participant = Participants.FirstOrDefault(p => p.Id == participantId);
+            if (participant == null)
+            {
+                StatusMessage = "Participant not found.";
+                StatusCss = "alert-warning";
+                return;
+            }
+
+            participant.Status = ParticipantStatus.Confirmed;
+            Db.eventParticipants.Update(participant);
+            await Db.SaveChangesAsync();
+
+            StatusMessage = "Participant promoted to confirmed.";
+            StatusCss = "alert-success";
+            await LoadParticipantsAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = "Error promoting participant.";
+            StatusCss = "alert-danger";
+        }
+    }
+
+    private async Task RemoveParticipantAsync(int participantId)
+    {
+        try
+        {
+            var success = await ParticipantSvc.RemoveParticipantAsync(participantId);
+            if (success)
+            {
+                StatusMessage = "Participant removed.";
+                StatusCss = "alert-success";
+                await LoadParticipantsAsync();
+            }
+            else
+            {
+                StatusMessage = "Could not remove participant.";
+                StatusCss = "alert-warning";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = "Error removing participant.";
+            StatusCss = "alert-danger";
         }
     }
 }

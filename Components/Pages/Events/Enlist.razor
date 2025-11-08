@@ -1,4 +1,5 @@
 @page "/e/{slug}/enlist"
+@rendermode InteractiveServer
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject ApplicationDbContext DbContext
@@ -102,93 +103,139 @@ else
 
         @RenderEventInfo()
 
-        @if (isAuthenticated)
+        @if (eventFull && !eventData.EnableWaitlist)
         {
-            <div class="card mt-4">
-                <div class="card-body">
-                    <h5 class="card-title">Enlist for This Event</h5>
-                    <p>You are logged in. Click below to enlist.</p>
-                    @if (eventFull && !eventData.EnableWaitlist)
-                    {
-                        <p class="text-danger">This event is full and waitlist is not enabled.</p>
-                    }
-                    else
-                    {
-                        @if (eventFull)
-                        {
-                            <p class="text-warning">Event is full. You will be added to the waitlist.</p>
-                        }
-                        <button class="btn btn-primary" @onclick="EnlistLoggedInUser" disabled="@submitting">
-                            @(submitting ? "Enlisting..." : "Enlist Now")
-                        </button>
-                    }
-                </div>
+            <div class="alert alert-danger mt-4">
+                <strong>Event Full</strong> - This event is at capacity and waitlist is not enabled.
             </div>
         }
         else
         {
-            <div class="card mt-4">
-                <div class="card-body">
-                    <h5 class="card-title">Enlist for This Event</h5>
-                    
-                    @if (!eventData.AllowedAnonymousEnlisting)
-                    {
-                        <p>Please <a href="/login?returnUrl=@Uri.EscapeDataString($"/e/{Slug}/enlist")">sign in</a> to enlist for this event.</p>
-                    }
-                    else
-                    {
-                        <div class="mb-3">
-                            <p>You can <a href="/login?returnUrl=@Uri.EscapeDataString($"/e/{Slug}/enlist")">sign in</a> or enlist as a guest:</p>
-                        </div>
-
-                        @if (eventFull && !eventData.EnableWaitlist)
-                        {
-                            <p class="text-danger">This event is full and waitlist is not enabled.</p>
-                        }
-                        else
-                        {
-                            @if (eventFull)
-                            {
-                                <p class="text-warning">Event is full. You will be added to the waitlist.</p>
-                            }
-
-                            <form @onsubmit="EnlistAnonymousUser">
-                                <div class="mb-3">
-                                    <label class="form-label">Name *</label>
-                                    <input type="text" class="form-control" @bind="anonymousName" required />
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label">Surname *</label>
-                                    <input type="text" class="form-control" @bind="anonymousSurname" required />
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label">Email *</label>
-                                    <input type="email" class="form-control" @bind="anonymousEmail" required />
-                                </div>
-
-                                @if (!string.IsNullOrEmpty(eventData.ConsentText))
-                                {
-                                    <div class="mb-3">
-                                        <div class="border p-3 mb-2" style="max-height: 200px; overflow-y: auto; background: #f8f9fa;">
-                                            <pre style="white-space: pre-wrap; margin: 0;">@eventData.ConsentText</pre>
-                                        </div>
-                                        <div class="form-check">
-                                            <input type="checkbox" class="form-check-input" id="consentCheck" @bind="consentGiven" required />
-                                            <label class="form-check-label" for="consentCheck">
-                                                I agree to the terms above *
-                                            </label>
-                                        </div>
-                                    </div>
-                                }
-
-                                <button type="submit" class="btn btn-primary" disabled="@submitting">
-                                    @(submitting ? "Enlisting..." : "Enlist as Guest")
-                                </button>
-                            </form>
-                        }
-                    }
+            @if (eventFull)
+            {
+                <div class="alert alert-warning mt-4">
+                    <strong>Event Full</strong> - You will be added to the waitlist.
                 </div>
-            </div>
+            }
+
+            @if (!eventData.AllowedAnonymousEnlisting)
+            {
+                <!-- Only logged-in enrollment allowed -->
+                @if (isAuthenticated)
+                {
+                    <div class="card mt-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Enlist for This Event</h5>
+                            <p>You are logged in. Click below to confirm your participation.</p>
+                            <button class="btn btn-primary btn-lg" @onclick="EnlistLoggedInUser" disabled="@submitting">
+                                @(submitting ? "Enlisting..." : "Enlist Now")
+                            </button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="card mt-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Sign In Required</h5>
+                            <p>Please <a href="/login?returnUrl=@Uri.EscapeDataString($"/e/{Slug}/enlist")" class="btn btn-primary">Sign In</a> to enlist for this event.</p>
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                <!-- Both logged-in and anonymous enrollment allowed -->
+                <h4 class="mt-4 mb-3">Choose How to Enlist</h4>
+                
+                <div class="row">
+                    <!-- Logged-in Option -->
+                    <div class="col-md-6 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    @if (isAuthenticated)
+                                    {
+                                        <span>Enlist with Your Account</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Sign In & Enlist</span>
+                                    }
+                                </h5>
+                                @if (isAuthenticated)
+                                {
+                                    <p class="card-text">You are logged in. Your profile information will be used.</p>
+                                    <button class="btn btn-primary btn-lg w-100" @onclick="EnlistLoggedInUser" disabled="@submitting">
+                                        @(submitting ? "Enlisting..." : "Enlist Now")
+                                    </button>
+                                }
+                                else
+                                {
+                                    <p class="card-text">Sign in to use your account details and manage your participation easily.</p>
+                                    <a href="/login?returnUrl=@Uri.EscapeDataString($"/e/{Slug}/enlist")" class="btn btn-primary btn-lg w-100">Sign In & Enlist</a>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Anonymous/Guest Option -->
+                    <div class="col-md-6 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Enlist as Guest</h5>
+                                <p class="card-text">No account needed. Provide your details below.</p>
+                                
+                                <p class="text-muted small">Debug: showGuestForm = @showGuestForm</p>
+                                
+                                @if (!showGuestForm)
+                                {
+                                    <button type="button" class="btn btn-outline-primary btn-lg w-100" @onclick="ShowGuestFormClick">
+                                        Continue as Guest
+                                    </button>
+                                }
+                                else
+                                {
+                                    <form @onsubmit="EnlistAnonymousUser">
+                                        <div class="mb-2">
+                                            <label class="form-label">Name *</label>
+                                            <input type="text" class="form-control" @bind="anonymousName" required />
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="form-label">Surname *</label>
+                                            <input type="text" class="form-control" @bind="anonymousSurname" required />
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="form-label">Email *</label>
+                                            <input type="email" class="form-control" @bind="anonymousEmail" required />
+                                        </div>
+
+                                        @if (!string.IsNullOrEmpty(eventData.ConsentText))
+                                        {
+                                            <div class="mb-2">
+                                                <div class="border p-2 mb-2" style="max-height: 150px; overflow-y: auto; background: #f8f9fa; font-size: 0.85rem;">
+                                                    <pre style="white-space: pre-wrap; margin: 0;">@eventData.ConsentText</pre>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input type="checkbox" class="form-check-input" id="consentCheck" @bind="consentGiven" required />
+                                                    <label class="form-check-label" for="consentCheck">
+                                                        I agree to the terms above *
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        }
+
+                                        <button type="submit" class="btn btn-primary w-100" disabled="@submitting">
+                                            @(submitting ? "Enlisting..." : "Enlist as Guest")
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-link w-100" @onclick="HideGuestFormClick">Cancel</button>
+                                    </form>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
         }
     </div>
 }
@@ -208,6 +255,7 @@ else
     private bool eventFull = false;
     private bool submitting = false;
     private bool showCancelModal = false;
+    private bool showGuestForm = false;
     private string? errorMessage;
     private string? successMessage;
 
@@ -439,6 +487,18 @@ This is an automated message.";
     private void ShowCancelConfirmation()
     {
         showCancelModal = true;
+    }
+
+    private void ShowGuestFormClick()
+    {
+        showGuestForm = true;
+        StateHasChanged();
+    }
+
+    private void HideGuestFormClick()
+    {
+        showGuestForm = false;
+        StateHasChanged();
     }
 
     private async Task ConfirmCancellation()
