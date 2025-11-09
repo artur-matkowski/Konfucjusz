@@ -17,6 +17,7 @@ public class ApplicationDbContext: DbContext
     public DbSet<Event> events { get; set; }
     public DbSet<EventOrganizer> eventOrganizers { get; set; }
     public DbSet<EventParticipant> eventParticipants { get; set; }
+    public DbSet<EventRecording> eventRecordings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -109,6 +110,26 @@ public class ApplicationDbContext: DbContext
         {
             eb.HasIndex(e => e.Slug)
                 .IsUnique();
+        });
+
+        modelBuilder.Entity<EventRecording>(eb =>
+        {
+            eb.Property(r => r.CreatedAt)
+                .HasColumnName("created_at")
+                .HasDefaultValueSql("now()")
+                .ValueGeneratedOnAdd();
+
+            eb.Property(r => r.UpdatedAt)
+                .HasColumnName("updated_at")
+                .HasDefaultValueSql("now()")
+                .ValueGeneratedOnAddOrUpdate();
+
+            eb.HasOne<Event>()
+                .WithMany()
+                .HasForeignKey(r => r.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            eb.HasIndex(r => new { r.EventId, r.CreatedAt });
         });
     }
 }

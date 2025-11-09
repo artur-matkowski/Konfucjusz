@@ -13,6 +13,7 @@ public class ParticipantService
         private readonly IDataProtectionProvider _dataProtectionProvider;
         private readonly IDataProtector _emailConfirmProtector;
         private readonly IDataProtector _cancelProtector;
+        private readonly IDataProtector _streamProtector;
         private readonly string _slugSecret;
 
         public ParticipantService(ApplicationDbContext context, string slugSecret)
@@ -24,6 +25,7 @@ public class ParticipantService
             _dataProtectionProvider = DataProtectionProvider.Create("Konfucjusz");
             _emailConfirmProtector = _dataProtectionProvider.CreateProtector("Konfucjusz.EventEnlist.EmailConfirm.v1");
             _cancelProtector = _dataProtectionProvider.CreateProtector("Konfucjusz.EventEnlist.Cancel.v1");
+            _streamProtector = _dataProtectionProvider.CreateProtector("Konfucjusz.EventStream.Access.v1");
         }
 
         /// <summary>
@@ -476,6 +478,45 @@ public class ParticipantService
             await _context.SaveChangesAsync();
 
             return unconfirmed.Count;
+        }
+
+        /// <summary>
+        /// Generate stream access token for a participant (no expiry)
+        /// </summary>
+        public string GenerateStreamToken(int eventId, int? participantId, string? email)
+        {
+            var nonce = Guid.NewGuid().ToString("N");
+            var payload = $"{eventId}|{participantId}|{email}|{nonce}";
+            return _streamProtector.Protect(payload);
+        }
+
+        /// <summary>
+        /// Validate and parse stream access token
+        /// </summary>
+        public bool TryParseStreamToken(string token, out int eventId, out int? participantId, out string? email)
+        {
+            eventId = 0;
+            participantId = null;
+            email = null;
+
+            try
+            {
+                var payload = _streamProtector.Unprotect(token);
+                var parts = payload.Split('|');
+                if (parts.Length != 4)
+                    return false;
+
+                eventId = int.Parse(parts[0]);
+                if (!string.IsNullOrEmpty(parts[1]) && int.TryParse(parts[1], out var pid))
+                    participantId = pid;
+                email = parts[2];
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 }
 
