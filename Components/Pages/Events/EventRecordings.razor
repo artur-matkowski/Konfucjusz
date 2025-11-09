@@ -1,0 +1,90 @@
+@page "/e/{Slug}/recordings"
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Db
+@inject NavigationManager Nav
+
+<h3>Event Recordings</h3>
+
+@if (Loading)
+{
+    <p>Loading...</p>
+}
+else if (EventEntity == null)
+{
+    <div class="alert alert-danger">Event not found.</div>
+}
+else
+{
+    <div class="mb-3">
+        <strong>@EventEntity.Title</strong><br />
+        <small>@EventEntity.EventStartDate.ToLocalTime():f - @EventEntity.EventEndDate.ToLocalTime():f</small>
+    </div>
+
+    @if (!Recordings.Any())
+    {
+        <div class="alert alert-info">No recordings available for this event yet.</div>
+    }
+    else
+    {
+        <div class="list-group">
+            @foreach (var rec in Recordings)
+            {
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">Recording from @rec.CreatedAt.ToLocalTime():f</h6>
+                            @if (rec.DurationSeconds > 0)
+                            {
+                                <small class="text-muted">Duration: @FormatDuration(rec.DurationSeconds)</small>
+                            }
+                        </div>
+                        <div>
+                            <a href="/recordings/@rec.FileName" class="btn btn-sm btn-primary" target="_blank" download>Download</a>
+                            <audio controls class="ms-2" style="height:32px;">
+                                <source src="/recordings/@rec.FileName" type="audio/wav" />
+                                Your browser does not support audio playback.
+                            </audio>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="mt-3">
+        <a href="/e/@Slug/stream" class="btn btn-outline-secondary">Back to Stream</a>
+    </div>
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+
+    private Event? EventEntity;
+    private List<EventRecording> Recordings = new();
+    private bool Loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        EventEntity = await Db.events.FirstOrDefaultAsync(e => e.Slug == Slug);
+        if (EventEntity != null)
+        {
+            Recordings = await Db.eventRecordings
+                .Where(r => r.EventId == EventEntity.Id && r.Completed)
+                .OrderByDescending(r => r.CreatedAt)
+                .ToListAsync();
+        }
+        Loading = false;
+    }
+
+    private string FormatDuration(int seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        if (ts.TotalHours >= 1)
+            return $"{(int)ts.TotalHours}h {ts.Minutes}m {ts.Seconds}s";
+        else if (ts.TotalMinutes >= 1)
+            return $"{ts.Minutes}m {ts.Seconds}s";
+        else
+            return $"{ts.Seconds}s";
+    }
+}

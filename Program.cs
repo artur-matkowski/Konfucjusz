@@ -12,8 +12,16 @@ var builder = WebApplication.CreateBuilder(args);
 
 
 // Add services to the container.
+// Prefer user-secrets or environment variables for the connection string; appsettings.json should not contain secrets.
+var connectionString = builder.Configuration.GetConnectionString("MyConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "Missing connection string 'MyConnection'. Configure it via user-secrets or environment variables.\n" +
+        "Example (user-secrets): dotnet user-secrets set \"ConnectionStrings:MyConnection\" \"Host=...;Port=5432;Database=...;Username=...;Password=...\"");
+}
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("MyConnection")));
+    options.UseNpgsql(connectionString));
 
 // Blazor services
 builder.Services.AddRazorComponents()
@@ -39,6 +47,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddSignalR();
 
 var app = builder.Build();
 
@@ -59,6 +68,9 @@ app.UseAuthorization();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+// SignalR hubs
+app.MapHub<AudioStreamHub>("/hubs/audio");
 
 // Apply EF migrations and seed initial data on startup (helpful for onboarding).
 using (var scope = app.Services.CreateScope())
