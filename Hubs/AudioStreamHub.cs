@@ -139,21 +139,25 @@ public class AudioStreamHub : Hub
 
     // Organizer broadcasts audio chunk (PCM16 little-endian)
     private static int _chunkCounter = 0;
-    public async Task BroadcastAudioChunk(int eventId, byte[] chunk)
+    public async Task BroadcastAudioChunk(int eventId, string base64Chunk)
     {
         try
         {
             _chunkCounter++;
+            
+            // Convert Base64 string to byte array
+            byte[] chunk = Convert.FromBase64String(base64Chunk);
+            
             // Log first few chunks to confirm audio is flowing
             if (_chunkCounter <= 3 || _chunkCounter % 100 == 1)
             {
                 Console.WriteLine($"[AudioStreamHub] Audio chunk #{_chunkCounter} received for event {eventId}, size: {chunk?.Length ?? 0} bytes");
             }
             
-            if (chunk == null)
+            if (chunk == null || chunk.Length == 0)
             {
-                Console.WriteLine($"[AudioStreamHub] ERROR: Received null chunk for event {eventId}");
-                throw new ArgumentNullException(nameof(chunk));
+                Console.WriteLine($"[AudioStreamHub] ERROR: Received empty chunk for event {eventId}");
+                throw new ArgumentException("Chunk cannot be empty");
             }
             
             // For v1 skip heavy validation and forward to group

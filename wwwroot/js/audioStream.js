@@ -150,17 +150,16 @@ window.konfAudio = (function(){
                     const bytes = pcmFloatTo16BitPCM(data);
                     
                     if (chunkCount % 100 === 1) {
-                        console.log(`[broadcast] Sending chunk #${chunkCount}, size: ${bytes.length} bytes, type: ${bytes.constructor.name}`);
+                        console.log(`[broadcast] Sending chunk #${chunkCount}, size: ${bytes.length} bytes`);
                     }
                     try {
-                        // Send Uint8Array directly - SignalR should handle it
-                        await broadcast.connection.invoke("BroadcastAudioChunk", broadcast.eventId, bytes);
+                        // Convert Uint8Array to Base64 string for SignalR JSON serialization
+                        const base64 = btoa(String.fromCharCode.apply(null, bytes));
+                        await broadcast.connection.invoke("BroadcastAudioChunk", broadcast.eventId, base64);
                     } catch (err) {
                         console.error("[broadcast] Error sending chunk:", err);
                         if (chunkCount === 1) {
                             console.error("[broadcast] Full error details:", err);
-                            console.error("[broadcast] Chunk type:", bytes.constructor.name);
-                            console.error("[broadcast] First 10 bytes:", Array.from(bytes.slice(0, 10)));
                         }
                     }
                 };
