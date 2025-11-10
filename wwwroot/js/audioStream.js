@@ -108,6 +108,24 @@ window.konfAudio = (function(){
                 console.log(`[startBroadcast] Starting for event ${eventId}, hubUrl: ${hubUrl}`);
                 console.log(`[startBroadcast] Current location: ${window.location.href}`);
                 
+                // Clean up any existing audio pipeline first
+                if (broadcast.processor) {
+                    console.log('[startBroadcast] Disconnecting existing processor');
+                    broadcast.processor.disconnect();
+                    broadcast.processor.onaudioprocess = null;
+                    broadcast.processor = null;
+                }
+                if (broadcast.stream) {
+                    console.log('[startBroadcast] Stopping existing media stream');
+                    broadcast.stream.getTracks().forEach(track => track.stop());
+                    broadcast.stream = null;
+                }
+                if (broadcast.audioCtx) {
+                    console.log('[startBroadcast] Closing existing AudioContext');
+                    await broadcast.audioCtx.close();
+                    broadcast.audioCtx = null;
+                }
+                
                 broadcast.eventId = eventId;
                 if (broadcast.connection) {
                     console.log('[startBroadcast] Stopping existing connection');
