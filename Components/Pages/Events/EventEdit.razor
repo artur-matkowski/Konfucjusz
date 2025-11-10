@@ -312,47 +312,6 @@
             }
         </tbody>
     </table>
-
-    <hr class="my-4" />
-
-    <h4>Audio Streaming</h4>
-    <p class="text-muted">Broadcast one-way audio to listeners on the stream page. Up to ~100 concurrent listeners supported in this mode.</p>
-    <div class="d-flex gap-2 mb-2">
-        <button class="btn btn-success" @onclick="StartStreamingAsync" disabled="@IsStreaming">Start Streaming</button>
-        <button class="btn btn-outline-danger" @onclick="StopStreamingAsync" disabled="@(!IsStreaming)">Stop Streaming</button>
-        <button class="btn btn-outline-primary" @onclick="ToggleRecordingAsync" disabled="@(!IsStreaming)">@(IsRecording ? "Stop Recording" : "Start Recording")</button>
-        @if (CurrentEvent?.AllowAnonymousStreaming == true)
-        {
-            var publicUrl = $"{Nav.BaseUri}e/{CurrentEvent.Slug}/stream";
-            <button class="btn btn-outline-secondary" @onclick="() => CopyToClipboard(publicUrl)">Copy Public Stream Link</button>
-        }
-        else
-        {
-            <span class="text-muted">Anonymous streaming disabled. Only enlisted/authenticated users may listen.</span>
-        }
-    </div>
-    <div class="mb-2">
-        @if (CurrentEvent != null)
-        {
-            <a href="/e/@CurrentEvent.Slug/recordings" class="btn btn-sm btn-link">View Past Recordings</a>
-        }
-    </div>
-    <div>
-        <strong>Active listeners:</strong>
-        <ul class="mt-2">
-            @if (ActiveListeners.Count == 0)
-            {
-                <li class="text-muted">No listeners.</li>
-            }
-            else
-            {
-                @foreach (var l in ActiveListeners)
-                {
-                    <li>@l</li>
-                }
-            }
-        </ul>
-    </div>
 }
 
 @if (showDeleteDialog)
@@ -392,9 +351,6 @@
 
     private bool showDeleteDialog = false;
     private string typedDeleteText = string.Empty;
-    private bool IsStreaming = false;
-    private bool IsRecording = false;
-    private List<string> ActiveListeners = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -644,93 +600,6 @@ Automated notification.";
     }
 
     [Inject] private NavigationManager Navigation { get; set; } = default!;
-
-    private async Task StartStreamingAsync()
-    {
-        if (CurrentEvent == null) return;
-        try
-        {
-            IsStreaming = true;
-            await JS.InvokeVoidAsync("konfAudio.startBroadcast", "/hubs/audio", CurrentEvent.Id);
-            // connect to manager group to receive listener join/leave events
-            await JS.InvokeVoidAsync("konfAudio.startListening", "/hubs/audio", CurrentEvent.Id, CurrentEvent.Slug, null);
-            // Wire up hub events via JS interop not implemented -> fallback: show only manual list updates later
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex);
-            StatusMessage = "Error starting stream.";
-            StatusCss = "alert-danger";
-            IsStreaming = false;
-        }
-    }
-
-    private async Task StopStreamingAsync()
-    {
-        try
-        {
-            // Stop recording first if active
-            if (IsRecording)
-            {
-                await ToggleRecordingAsync();
-            }
-            await JS.InvokeVoidAsync("konfAudio.stopBroadcast");
-        }
-        catch {}
-        IsStreaming = false;
-    }
-
-    private async Task ToggleRecordingAsync()
-    {
-        if (!IsStreaming || CurrentEvent == null) return;
-        try
-        {
-            if (!IsRecording)
-            {
-                var success = await JS.InvokeAsync<bool>("konfAudio.invoke", "/hubs/audio", "StartRecording", CurrentEvent.Id);
-                if (success)
-                {
-                    IsRecording = true;
-                    StatusMessage = "Recording started.";
-                    StatusCss = "alert-info";
-                }
-            }
-            else
-            {
-                var fileName = await JS.InvokeAsync<string?>("konfAudio.invoke", "/hubs/audio", "StopRecording", CurrentEvent.Id);
-                IsRecording = false;
-                if (!string.IsNullOrEmpty(fileName))
-                {
-                    // Save to database
-                    var recording = new EventRecording
-                    {
-                        EventId = CurrentEvent.Id,
-                        FileName = fileName,
-                        DurationSeconds = 0, // Will update with actual duration later
-                        Completed = true,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-                    Db.eventRecordings.Add(recording);
-                    await Db.SaveChangesAsync();
-                    
-                    StatusMessage = $"Recording saved: {fileName}";
-                    StatusCss = "alert-success";
-                }
-                else
-                {
-                    StatusMessage = "Recording stopped (no file).";
-                    StatusCss = "alert-warning";
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex);
-            StatusMessage = "Error toggling recording.";
-            StatusCss = "alert-danger";
-        }
-    }
 
     private async Task ApproveParticipantAsync(int participantId)
     {

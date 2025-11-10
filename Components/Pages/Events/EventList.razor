@@ -61,6 +61,9 @@
                             <div class="btn-group" role="group">
                                 <button class="btn btn-sm btn-outline-primary" @onclick="() => EditEvent(evt.Id)">Edit</button>
                                 <button class="btn btn-sm btn-outline-secondary" title="Send email to all participants" @onclick="() => MailAll(evt.Id)">Mail All</button>
+                                <button class="btn btn-sm btn-success" title="Broadcast audio stream" @onclick="() => StreamAudio(evt.Id)">
+                                    📡 Stream
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -158,5 +161,10 @@
     private void MailAll(int eventId)
     {
         Nav.NavigateTo($"/events/mail-all/{eventId}");
+    }
+
+    private void StreamAudio(int eventId)
+    {
+        Nav.NavigateTo($"/events/{eventId}/stream-broadcast");
     }
 }
