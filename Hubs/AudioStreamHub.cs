@@ -56,14 +56,24 @@ public class AudioStreamHub : Hub
 
     public async Task<bool> JoinListener(int eventId, string slug, string? token)
     {
+        Console.WriteLine($"[AudioStreamHub] JoinListener called: eventId={eventId}, slug={slug}, token={token}, connectionId={Context.ConnectionId}");
+        
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         
         var ev = await db.events.FirstOrDefaultAsync(e => e.Id == eventId && e.Slug == slug);
-        if (ev == null) return false;
+        if (ev == null)
+        {
+            Console.WriteLine($"[AudioStreamHub] Event not found: {eventId}/{slug}");
+            return false;
+        }
 
+        Console.WriteLine($"[AudioStreamHub] Event found: AllowAnonymousStreaming={ev.AllowAnonymousStreaming}");
+        
         var user = Context.User;
         var isAuth = user?.Identity?.IsAuthenticated == true;
+        
+        Console.WriteLine($"[AudioStreamHub] User authenticated: {isAuth}");
         
         // Access rules:
         // 1. If allow_anonymous_streaming: allow anyone
@@ -76,6 +86,7 @@ public class AudioStreamHub : Hub
             // Validate stream token (requires ParticipantService - inject or pass)
             // For now we'll accept token presence as valid; enhance later with actual validation
             allowed = true;
+            Console.WriteLine($"[AudioStreamHub] Access granted via token");
         }
         
         if (!allowed && isAuth)
@@ -87,16 +98,23 @@ public class AudioStreamHub : Hub
                 var isOrganizer = await db.eventOrganizers.AnyAsync(eo => eo.EventId == eventId && eo.UserId == userId.Value);
                 var isEnlisted = await db.eventParticipants.AnyAsync(ep => ep.EventId == eventId && ep.UserId == userId.Value);
                 allowed = isOrganizer || isEnlisted;
+                Console.WriteLine($"[AudioStreamHub] Access granted via auth: organizer={isOrganizer}, enlisted={isEnlisted}");
             }
         }
 
-        if (!allowed) return false;
+        if (!allowed)
+        {
+            Console.WriteLine($"[AudioStreamHub] Access denied for eventId={eventId}");
+            return false;
+        }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(eventId));
         EventGroups.AddOrUpdate(eventId, _ => new HashSet<string> { Context.ConnectionId }, (_, set) => { lock (set) set.Add(Context.ConnectionId); return set; });
         var display = BuildDisplayName(user);
         ConnectionIndex[Context.ConnectionId] = (eventId, display);
         await Clients.Group(ManagerGroup(eventId)).SendAsync("ListenerJoined", Context.ConnectionId, display);
+        
+        Console.WriteLine($"[AudioStreamHub] JoinListener success: {Context.ConnectionId} added to group {GroupName(eventId)}");
         return true;
     }
 
@@ -138,10 +156,13 @@ public class AudioStreamHub : Hub
     }
 
     // Organizer broadcasts audio chunk (PCM16 little-endian)
+    private static int _broadcastCounter = 0;
     public async Task BroadcastAudioChunk(int eventId, string base64Chunk)
     {
         try
         {
+            _broadcastCounter++;
+            
             // Convert Base64 string to byte array
             byte[] chunk = Convert.FromBase64String(base64Chunk);
             
@@ -149,6 +170,12 @@ public class AudioStreamHub : Hub
             {
                 Console.WriteLine($"[AudioStreamHub] ERROR: Received empty chunk for event {eventId}");
                 throw new ArgumentException("Chunk cannot be empty");
+            }
+            
+            // Log every 100th chunk to verify broadcasting
+            if (_broadcastCounter % 100 == 1)
+            {
+                Console.WriteLine($"[AudioStreamHub] Broadcasting chunk #{_broadcastCounter} to group {GroupName(eventId)}, size: {chunk.Length} bytes");
             }
             
             // Forward to group
