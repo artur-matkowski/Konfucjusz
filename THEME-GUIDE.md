@@ -1,182 +1,248 @@
-# Theme Management Guide — Konfucjusz
+# Theme System Guide
 
-## Overview
+## Quick Start: Editing Your Theme
 
-The application now uses a **3-Color Palette System** with CSS custom properties (CSS variables). All colors derive from 3 base colors for easy theme management and consistent design.
-
-## The 3 Base Colors
-
-Located at the top of `wwwroot/app.css`:
+Edit **only these 3 colors** in `wwwroot/app.css`:
 
 ```css
-:root {
-    /* ============= BASE COLORS (EDIT THESE) ============= */
-    --color-primary-base: #1b6ec2;      /* Blue - your main brand color */
-    --color-secondary-base: #6c757d;    /* Gray - neutral color */
-    --color-accent-base: #198754;       /* Green - success/positive actions */
-}
+--color-primary-base: #c52a5b;      /* Main brand color */
+--color-secondary-base: #00c44b;    /* Neutral/accent */
+--color-accent-base: #198754;       /* Success color */
 ```
 
-**To change your app's entire color scheme**: Just edit these 3 values!
-
-## How It Works
-
-### 1. Base Colors → Derived Shades
-
-Each base color generates lighter/darker shades automatically referenced throughout the CSS:
-
-- **Primary** (brand color): Used for links, buttons, focus states
-  - `--color-primary-darker`: Button borders
-  - `--color-primary-dark`: Hover states
-  - `--color-primary`: Main brand color
-  - `--color-primary-light`: Focus rings
-  - `--color-primary-lighter`: Link color
-
-- **Secondary** (neutral): Used for borders, disabled states
-  - `--color-secondary-darker` through `--color-secondary-lighter`
-
-- **Accent** (success/error): Used for validation, alerts
-  - `--color-success-*`: Positive feedback
-  - `--color-error-*`: Negative feedback, validation errors
-
-### 2. Semantic Variables (Use These in Your Code)
-
-Instead of using color values directly, use semantic names:
-
-```css
-/* Text Colors */
---color-text-primary: Main text color
---color-text-secondary: Secondary/muted text
---color-text-link: Link text
---color-text-error: Error messages
-
-/* Background Colors */
---color-bg-body: Page background
---color-bg-error: Error boundary background
-
-/* Border Colors */
---color-border-default: Default borders
---color-border-primary: Primary button borders
---color-border-success: Validation success
---color-border-error: Validation errors
-
-/* Focus States */
---color-focus-ring: Focus indicator color
-```
-
-## Examples
-
-### Changing Your Brand Color
-
-Want a purple theme instead of blue?
-
-```css
-:root {
-    --color-primary-base: #7c3aed;  /* Purple */
-}
-```
-
-All buttons, links, and focus states will update automatically!
-
-### Adding Custom Components
-
-When creating new components, use semantic variables:
-
-```css
-.my-custom-component {
-    color: var(--color-text-primary);
-    background-color: var(--color-bg-body);
-    border: 1px solid var(--color-border-default);
-}
-
-.my-custom-component:hover {
-    border-color: var(--color-primary);
-}
-```
-
-### Creating Dark Mode (Future)
-
-You can override these variables in a media query:
-
-```css
-@media (prefers-color-scheme: dark) {
-    :root {
-        --color-primary-base: #60a5fa;
-        --color-secondary-base: #9ca3af;
-        --color-accent-base: #34d399;
-        
-        --color-text-primary: #f9fafb;
-        --color-bg-body: #1f2937;
-    }
-}
-```
-
-## Current Color Mapping
-
-### Where Each Color Is Used
-
-| Element | CSS Variable | Default Value |
-|---------|--------------|---------------|
-| Links | `--color-text-link` | #006bb7 (blue) |
-| Primary Button BG | `--color-primary` | #1b6ec2 (blue) |
-| Primary Button Border | `--color-border-primary` | #1861ac (darker blue) |
-| Focus Ring | `--color-focus-ring` | #258cfb (light blue) |
-| Validation Success | `--color-border-success` | #26b050 (green) |
-| Validation Error | `--color-text-error` | #e50000 (red) |
-| Form Borders | `--color-border-default` | #929292 (gray) |
-
-## File Structure
-
-```
-wwwroot/
-├── app.css              ← Your theme variables (EDIT HERE)
-└── bootstrap/
-    └── bootstrap.min.css ← Bootstrap framework (DO NOT EDIT)
-```
-
-**Important**: Bootstrap has its own CSS variables (prefixed with `--bs-`). Our custom theme system complements Bootstrap but doesn't replace it.
-
-## Best Practices
-
-1. **Always use semantic variables** in new CSS:
-   ```css
-   ✅ color: var(--color-text-primary);
-   ❌ color: #212529;
-   ```
-
-2. **Create new semantic variables** for new purposes:
-   ```css
-   :root {
-       --color-card-shadow: rgba(0, 0, 0, 0.1);
-   }
-   ```
-
-3. **Keep the 3 base colors in sync** with your brand:
-   - Primary = Brand color (blue, purple, etc.)
-   - Secondary = Neutral/grayscale
-   - Accent = Success/positive actions (green, teal, etc.)
-
-4. **Test your changes** by editing the 3 base colors and checking all pages:
-   - Links should change color
-   - Buttons should update
-   - Focus states should match
-   - Validation states should remain clear
-
-## Maintenance
-
-When adding new pages or components:
-
-1. Use existing semantic variables whenever possible
-2. If you need a new color purpose, add it to the semantic section in `app.css`
-3. Derive it from one of the 3 base colors to maintain consistency
-
-## Accessibility
-
-Ensure sufficient contrast when changing colors:
-- Text on background: at least 4.5:1 contrast ratio
-- Links should be clearly distinguishable
-- Focus states must be visible (use browser dev tools or online contrast checkers)
+Everything else automatically derives from these using `color-mix()`.
 
 ---
 
-**Questions?** Check `wwwroot/app.css` for the complete variable list and current mappings.
+## What This Theme System Does
+
+### 1. **Automatic Color Derivation**
+All shades (darker, lighter) are calculated automatically using CSS `color-mix()`:
+- **Darker shades**: Mix base color with black (e.g., 80% base + 20% black)
+- **Lighter shades**: Mix base color with white (e.g., 60% base + 40% white)
+
+Example:
+```css
+--color-primary-darker: color-mix(in srgb, var(--color-primary-base) 80%, black);
+```
+
+### 2. **Gradient Background**
+The page background uses a subtle diagonal gradient mixing primary and secondary colors:
+```css
+background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--bs-primary) 5%, white) 0%, 
+    color-mix(in srgb, var(--bs-secondary) 3%, white) 100%);
+```
+
+### 3. **Smart Text Contrast**
+- **Dark backgrounds** (sidebar): Use `--color-text-on-dark` (white)
+- **Light backgrounds** (main content): Use `--bs-body-color` (dark gray)
+- **Primary color backgrounds** (active nav items): Use `--color-text-on-primary` (white)
+
+### 4. **Form Elements**
+- Input fields have white background for readability
+- Borders are tinted with primary color
+- Focus states use primary color with ring effect
+
+### 5. **Component Coverage**
+
+**What changes with theme:**
+- ✅ All Bootstrap buttons (`.btn-primary`, `.btn-secondary`, etc.)
+- ✅ Alerts (`.alert-success`, `.alert-danger`, etc.)
+- ✅ Badges (`.badge`)
+- ✅ Page gradient background
+- ✅ Sidebar gradient (dark primary shades)
+- ✅ Top navigation bar (subtle primary tint)
+- ✅ Navigation links (active state uses primary)
+- ✅ Form borders and focus states
+- ✅ Headings (tinted with primary)
+- ✅ Links (use primary color)
+- ✅ Cards (subtle primary tint)
+
+**What stays neutral:**
+- ❌ Input field backgrounds (white for readability)
+- ❌ Body text color (dark for contrast)
+
+---
+
+## How color-mix() Works
+
+```css
+color-mix(in srgb, color1 percentage%, color2)
+```
+
+- `in srgb`: Color space (standard RGB)
+- `color1`: Base color
+- `percentage%`: How much of color1 to use
+- `color2`: Color to mix with
+
+**Examples:**
+```css
+/* 80% primary + 20% black = darker primary */
+color-mix(in srgb, var(--bs-primary) 80%, black)
+
+/* 60% primary + 40% white = lighter primary */
+color-mix(in srgb, var(--bs-primary) 60%, white)
+
+/* 5% primary + 95% white = very subtle tint */
+color-mix(in srgb, var(--bs-primary) 5%, white)
+```
+
+---
+
+## Updating RGB Values
+
+**Important:** When changing base colors, update the RGB values manually:
+
+1. Convert your hex color to RGB (use online converter)
+2. Update the corresponding RGB variable
+
+```css
+--bs-primary: #c52a5b;
+--bs-primary-rgb: 197, 42, 91;  /* ← Must match hex above! */
+```
+
+Bootstrap uses RGB values for opacity/transparency effects.
+
+---
+
+## Browser Support
+
+`color-mix()` requires:
+- Chrome 111+ (February 2023)
+- Firefox 113+ (May 2023)
+- Safari 16.2+ (December 2022)
+- Edge 111+ (March 2023)
+
+**All modern browsers support this.** No fallback needed for 2024+ projects.
+
+---
+
+## Accessibility Considerations
+
+### Contrast Ratios
+
+When choosing colors, ensure sufficient contrast:
+- **Normal text**: 4.5:1 minimum
+- **Large text** (18pt+): 3:1 minimum
+- **UI components**: 3:1 minimum
+
+**Test your colors:**
+1. Use browser DevTools or online contrast checker
+2. Test with primary color on white background
+3. Test white text on primary color background
+
+### Text Color Strategy
+
+The theme uses **industry-standard approach**:
+
+1. **Light backgrounds** → Dark text (high contrast)
+2. **Dark backgrounds** → Light text (high contrast)
+3. **Colored backgrounds** → White or black text (depends on color brightness)
+
+**Our implementation:**
+```css
+/* Light gradient body → Dark text */
+--bs-body-color: #212529;
+
+/* Dark sidebar → White text */
+--color-text-on-dark: white;
+
+/* Primary colored elements → White text */
+--color-text-on-primary: white;
+
+/* Headings → Tinted with primary but still dark */
+--bs-heading-color: color-mix(in srgb, var(--bs-primary) 80%, black);
+```
+
+### Not Too Strict with 3 Colors
+
+**You're right to question strict adherence!** Industry standard:
+
+- **3 base colors** for brand identity
+- **Neutral colors** (white, black, grays) for text and backgrounds
+- **Semantic colors** (red for errors) stay independent
+
+**This theme follows best practices:**
+- ✅ Brand colors derive from your 3 base colors
+- ✅ Text uses neutral black/white for readability
+- ✅ Danger/error stays Bootstrap red (universal understanding)
+- ✅ Backgrounds mix brand colors with white (subtle branding)
+
+---
+
+## Troubleshooting
+
+### "Colors don't look different"
+- Check that you saved `app.css`
+- Hard refresh browser (Ctrl+Shift+R / Cmd+Shift+R)
+- Verify RGB values match hex colors
+
+### "Text is hard to read"
+- Adjust `--bs-body-bg-solid` percentage (currently 4%)
+- Lower percentage = more subtle gradient
+- Ensure primary color isn't too light or too dark
+
+### "Input fields blend into background"
+- Input fields intentionally stay white for best readability
+- This is standard practice (Google, Microsoft, Apple all do this)
+- Borders are tinted with primary color for brand consistency
+
+### "I want stronger theme presence"
+- Increase gradient percentages in `--bs-body-bg` (currently 5% and 3%)
+- Increase top-row background from 8% to 12%
+- Add tint to card backgrounds (currently 5%)
+
+---
+
+## Architecture Notes
+
+### Where Theme Is Applied
+
+1. **wwwroot/app.css**: Global variables and body styles
+2. **Components/Layout/MainLayout.razor.css**: Sidebar and top-row
+3. **Components/Layout/NavMenu.razor.css**: Navigation links
+
+### Component-Scoped CSS
+
+Blazor uses scoped CSS (`.razor.css` files). These styles are isolated per component, so:
+- Theme variables work across all scoped CSS
+- Must explicitly use `var(--bs-primary)` instead of hardcoded colors
+- Cannot be overridden from parent stylesheets
+
+---
+
+## Examples: Customizing Further
+
+### Make Gradient Stronger
+```css
+--bs-body-bg: linear-gradient(135deg, 
+    color-mix(in srgb, var(--bs-primary) 12%, white) 0%,  /* 5% → 12% */
+    color-mix(in srgb, var(--bs-secondary) 8%, white) 100%); /* 3% → 8% */
+```
+
+### Make Sidebar Lighter
+```css
+background-image: linear-gradient(180deg, 
+    color-mix(in srgb, var(--bs-primary) 70%, black) 0%,  /* 60% → 70% */
+    color-mix(in srgb, var(--bs-primary) 40%, black) 70%); /* 30% → 40% */
+```
+
+### Add Tint to Input Fields
+```css
+--bs-body-bg-input: color-mix(in srgb, var(--bs-primary) 2%, white);
+```
+
+---
+
+## Summary of Industry Standards Used
+
+1. **3-Color Rule**: Base brand palette (primary, secondary, accent)
+2. **Neutral Text**: Black/white for readability (not derived from brand)
+3. **Semantic Colors**: Red for errors (universal convention)
+4. **White Inputs**: Standard practice for form fields
+5. **Automatic Contrast**: Light backgrounds → dark text, dark backgrounds → light text
+6. **Subtle Gradients**: 3-8% brand color mixed with white for backgrounds
+7. **Strong Accents**: 50-80% brand color for interactive elements
+
+**You have a professional, accessible, and flexible theme system!** 🎨
