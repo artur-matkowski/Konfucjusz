@@ -138,21 +138,12 @@ public class AudioStreamHub : Hub
     }
 
     // Organizer broadcasts audio chunk (PCM16 little-endian)
-    private static int _chunkCounter = 0;
     public async Task BroadcastAudioChunk(int eventId, string base64Chunk)
     {
         try
         {
-            _chunkCounter++;
-            
             // Convert Base64 string to byte array
             byte[] chunk = Convert.FromBase64String(base64Chunk);
-            
-            // Log first few chunks to confirm audio is flowing
-            if (_chunkCounter <= 3 || _chunkCounter % 100 == 1)
-            {
-                Console.WriteLine($"[AudioStreamHub] Audio chunk #{_chunkCounter} received for event {eventId}, size: {chunk?.Length ?? 0} bytes");
-            }
             
             if (chunk == null || chunk.Length == 0)
             {
@@ -160,21 +151,13 @@ public class AudioStreamHub : Hub
                 throw new ArgumentException("Chunk cannot be empty");
             }
             
-            // For v1 skip heavy validation and forward to group
+            // Forward to group
             await Clients.Group(GroupName(eventId)).SendAsync("ReceiveAudio", chunk);
 
             // If recording active, append chunk
             if (ActiveRecordings.TryGetValue(eventId, out var writer) && writer != null)
             {
-                if (_chunkCounter <= 3 || _chunkCounter % 100 == 1)
-                {
-                    Console.WriteLine($"[AudioStreamHub] Writing chunk #{_chunkCounter} to recording");
-                }
                 writer.AppendPcm16(chunk);
-            }
-            else if (_chunkCounter <= 3)
-            {
-                Console.WriteLine($"[AudioStreamHub] No active recording for event {eventId}");
             }
         }
         catch (Exception ex)
