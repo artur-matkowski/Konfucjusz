@@ -1,0 +1,385 @@
+@page "/events/{EventId:int}/stream-broadcast"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@attribute [Authorize(Roles = "Administrator,Organizer")]
+@inject EventService EventSvc
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ApplicationDbContext Db
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<h3>Audio Streaming - @CurrentEvent?.Title</h3>
+
+@if (!CanManageEvent)
+{
+    <div class="alert alert-danger">You do not have permission to manage this event.</div>
+    <a href="/events" class="btn btn-secondary">Back to Events</a>
+    return;
+}
+
+@if (!string.IsNullOrEmpty(StatusMessage))
+{
+    <div class="alert @StatusCss" role="alert">@StatusMessage</div>
+}
+
+@if (CurrentEvent != null)
+{
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Broadcast Controls</h5>
+                    <p class="text-muted">
+                        Broadcast one-way audio to listeners. Recording will happen automatically when you start streaming.
+                    </p>
+                    
+                    <div class="d-flex gap-2 mb-3">
+                        <button class="btn btn-success btn-lg" @onclick="StartStreamingAsync" disabled="@IsStreaming">Start Streaming
+                        </button>
+                        <button class="btn btn-danger btn-lg" @onclick="StopStreamingAsync" disabled="@(!IsStreaming)">Stop Streaming</button>
+                    </div>
+
+                    @if (IsStreaming)
+                    {
+                        <div class="alert alert-success">
+                            <strong>Live Broadcast Active</strong>
+                            @if (IsRecording)
+                            {
+                                <text>Recording in progress...</text>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-secondary">Not currently broadcasting</div>
+                    }
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Stream Information</h5>
+                    
+                    @if (CurrentEvent.AllowAnonymousStreaming)
+                    {
+                        var publicUrl = $"{Nav.BaseUri}e/{CurrentEvent.Slug}/stream";
+                        <div class="mb-3">
+                            <label class="form-label"><strong>Public Stream Link:</strong></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" readonly value="@publicUrl" id="streamLink" />
+                                <button class="btn btn-outline-secondary" @onclick="() => CopyToClipboard(publicUrl)">Copy</button>
+                            </div>
+                            <small class="text-muted">Anyone with this link can listen to the stream.</small>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning">Anonymous streaming is disabled. Only authenticated users can listen.</div>
+                    }
+
+                    <div class="mb-3">
+                        <a href="/e/@CurrentEvent.Slug/recordings" class="btn btn-outline-primary">View Past Recordings</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Active Listeners</h5>
+                    @if (!IsStreaming)
+                    {
+                        <p class="text-muted small">Listener list will appear when streaming starts.</p>
+                    }
+                    else if (!Listeners.Any())
+                    {
+                        <p class="text-muted small">No listeners connected yet.</p>
+                    }
+                    else
+                    {
+                        <ul class="list-unstyled">
+                            @foreach (var listener in Listeners)
+                            {
+                                <li class="mb-2">
+                                    <span class="badge bg-success">🎧</span>
+                                    <span class="ms-2">@listener.Display</span>
+                                </li>
+                            }
+                        </ul>
+                        <p class="text-muted small mt-2">Total: @Listeners.Count</p>
+                    }
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Quick Actions</h5>
+                    <div class="d-grid gap-2">
+                        <a href="/events/edit/@EventId" class="btn btn-outline-secondary">Edit Event Details</a>
+                        <a href="/events" class="btn btn-outline-secondary">Back to Events</a>
+                    </div>
+                </div>
+            </div>
+
+            @if (IsStreaming)
+            {
+                <div class="card mt-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Tips</h5>
+                        <ul class="small text-muted">
+                            <li>Check your microphone permissions in browser</li>
+                            <li>Use headphones to avoid feedback</li>
+                            <li>Test audio levels before starting</li>
+                            <li>Recording saves automatically when you stop</li>
+                        </ul>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int EventId { get; set; }
+
+    private Event? CurrentEvent;
+    private bool CanManageEvent = false;
+    private int CurrentUserId;
+    private bool IsAdmin = false;
+    private bool IsStreaming = false;
+    private bool IsRecording = false;
+    private string StatusMessage = "";
+    private string StatusCss = "alert-info";
+    
+    public class ListenerInfo
+    {
+        public string Cid { get; set; } = "";
+        public string Display { get; set; } = "";
+    }
+    
+    private List<ListenerInfo> Listeners = new();
+    private DotNetObjectReference<StreamBroadcast>? dotNetRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        IsAdmin = user.IsInRole("Administrator");
+
+        var emailClaim = user.FindFirst(c => c.Type == System.Security.Claims.ClaimTypes.Email);
+        if (emailClaim != null)
+        {
+            var currentUser = await Db.users.FirstOrDefaultAsync(u => u.userEmail == emailClaim.Value);
+            if (currentUser != null)
+            {
+                CurrentUserId = currentUser.Id;
+            }
+        }
+
+        await LoadEventAsync();
+        
+        // Setup .NET reference for JS callbacks
+        dotNetRef = DotNetObjectReference.Create(this);
+    }
+
+    private async Task LoadEventAsync()
+    {
+        CurrentEvent = await Db.events.FindAsync(EventId);
+        if (CurrentEvent == null)
+        {
+            StatusMessage = "Event not found.";
+            StatusCss = "alert-danger";
+            return;
+        }
+
+        // Check permission
+        if (IsAdmin)
+        {
+            CanManageEvent = true;
+        }
+        else
+        {
+            var isOrganizer = await Db.eventOrganizers
+                .AnyAsync(eo => eo.EventId == EventId && eo.UserId == CurrentUserId);
+            CanManageEvent = isOrganizer;
+        }
+    }
+
+    private async Task StartStreamingAsync()
+    {
+        if (CurrentEvent == null) return;
+        try
+        {
+            Console.WriteLine($"[StreamBroadcast] Starting streaming for event {CurrentEvent.Id}");
+            IsStreaming = true;
+            
+            // Join manager group to receive listener updates
+            Console.WriteLine("[StreamBroadcast] Joining manager group...");
+            await JS.InvokeVoidAsync("konfAudio.joinManager", "/hubs/audio", CurrentEvent.Id, dotNetRef);
+            Console.WriteLine("[StreamBroadcast] Joined manager group");
+            
+            // Start broadcasting
+            Console.WriteLine("[StreamBroadcast] Starting broadcast...");
+            await JS.InvokeVoidAsync("konfAudio.startBroadcast", "/hubs/audio", CurrentEvent.Id);
+            Console.WriteLine("[StreamBroadcast] Broadcast started");
+            
+            // Automatically start recording
+            Console.WriteLine("[StreamBroadcast] Waiting 500ms before starting recording...");
+            await Task.Delay(500); // Give broadcast time to initialize
+            Console.WriteLine("[StreamBroadcast] Starting recording...");
+            var success = await JS.InvokeAsync<bool>("konfAudio.invoke", "/hubs/audio", "StartRecording", CurrentEvent.Id);
+            Console.WriteLine($"[StreamBroadcast] StartRecording returned: {success}");
+            if (success)
+            {
+                IsRecording = true;
+                StatusMessage = "Streaming and recording started successfully!";
+                StatusCss = "alert-success";
+            }
+            else
+            {
+                StatusMessage = "Streaming started, but recording failed to start.";
+                StatusCss = "alert-warning";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[StreamBroadcast] Error starting stream: {ex}");
+            StatusMessage = $"Error starting stream: {ex.Message}";
+            StatusCss = "alert-danger";
+            IsStreaming = false;
+        }
+    }
+
+    private async Task StopStreamingAsync()
+    {
+        try
+        {
+            // Stop recording first if active (while connection is still alive)
+            if (IsRecording)
+            {
+                try
+                {
+                    var fileName = await JS.InvokeAsync<string?>("konfAudio.invoke", "/hubs/audio", "StopRecording", CurrentEvent.Id);
+                    IsRecording = false;
+                    if (!string.IsNullOrEmpty(fileName))
+                    {
+                        StatusMessage = $"Recording saved as: {fileName}";
+                        StatusCss = "alert-success";
+                    }
+                }
+                catch (Microsoft.JSInterop.JSException jsEx) when (jsEx.Message.Contains("Connection closed"))
+                {
+                    // Connection was closed during StopRecording - this is OK, recording was saved
+                    IsRecording = false;
+                    StatusMessage = "Recording stopped and saved.";
+                    StatusCss = "alert-success";
+                }
+                
+                // Give the server a moment to complete the recording save
+                await Task.Delay(100);
+            }
+            
+            // Stop broadcast (stops audio capture, but keeps connection)
+            await JS.InvokeVoidAsync("konfAudio.stopBroadcast");
+            
+            // Leave manager group
+            await JS.InvokeVoidAsync("konfAudio.leaveManager");
+            Listeners.Clear();
+            
+            IsStreaming = false;
+            
+            // Close the SignalR connection after a brief delay
+            // This prevents interrupting any pending server operations
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(200);
+                try
+                {
+                    await JS.InvokeVoidAsync("konfAudio.closeConnection");
+                }
+                catch
+                {
+                    // Ignore - connection cleanup errors are expected
+                }
+            });
+            
+            if (string.IsNullOrEmpty(StatusMessage))
+            {
+                StatusMessage = "Stream stopped.";
+                StatusCss = "alert-info";
+            }
+        }
+        catch (Microsoft.JSInterop.JSException jsEx) when (jsEx.Message.Contains("Connection closed"))
+        {
+            // Connection close errors are expected and harmless
+            Console.WriteLine("Connection cleanup error (expected)");
+            IsStreaming = false;
+            IsRecording = false;
+            if (string.IsNullOrEmpty(StatusMessage))
+            {
+                StatusMessage = "Stream stopped.";
+                StatusCss = "alert-info";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = $"Error stopping stream: {ex.Message}";
+            StatusCss = "alert-danger";
+            IsStreaming = false;
+            IsRecording = false;
+        }
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            StatusMessage = "Link copied to clipboard!";
+            StatusCss = "alert-success";
+        }
+        catch
+        {
+            StatusMessage = "Could not copy to clipboard. Please copy manually.";
+            StatusCss = "alert-warning";
+        }
+    }
+    
+    [JSInvokable]
+    public void UpdateListeners(ListenerInfo[] listeners)
+    {
+        Listeners = listeners.ToList();
+        InvokeAsync(StateHasChanged);
+    }
+    
+    [JSInvokable]
+    public void AddListener(string cid, string display)
+    {
+        if (!Listeners.Any(l => l.Cid == cid))
+        {
+            Listeners.Add(new ListenerInfo { Cid = cid, Display = display });
+            InvokeAsync(StateHasChanged);
+        }
+    }
+    
+    [JSInvokable]
+    public void RemoveListener(string cid)
+    {
+        var listener = Listeners.FirstOrDefault(l => l.Cid == cid);
+        if (listener != null)
+        {
+            Listeners.Remove(listener);
+            InvokeAsync(StateHasChanged);
+        }
+    }
+    
+    public void Dispose()
+    {
+        dotNetRef?.Dispose();
+    }
+}

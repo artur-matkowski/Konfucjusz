@@ -104,29 +104,42 @@ window.konfAudio = (function(){
             if (typeof signalR === 'undefined') {
                 throw new Error('SignalR is not loaded. Please ensure the SignalR script is included before audioStream.js');
             }
+            console.log(`[startBroadcast] Starting for event ${eventId}`);
             broadcast.eventId = eventId;
-            if (broadcast.connection) await broadcast.connection.stop();
+            if (broadcast.connection) {
+                console.log('[startBroadcast] Stopping existing connection');
+                await broadcast.connection.stop();
+            }
+            
             broadcast.connection = new signalR.HubConnectionBuilder()
                 .withUrl(hubUrl)
                 .withAutomaticReconnect()
                 .build();
+            
+            console.log('[startBroadcast] Starting SignalR connection...');
             await broadcast.connection.start();
+            console.log('[startBroadcast] SignalR connection established');
 
+            console.log('[startBroadcast] Requesting microphone access...');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('[startBroadcast] Microphone access granted');
+            
             broadcast.stream = stream;
             broadcast.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const source = broadcast.audioCtx.createMediaStreamSource(stream);
             const processor = broadcast.audioCtx.createScriptProcessor(4096, 1, 1);
+            
             processor.onaudioprocess = async (e) => {
-                if (!broadcast.connection) return;
+                if (!broadcast.connection || broadcast.connection.state !== 'Connected') return;
                 const data = e.inputBuffer.getChannelData(0);
                 const bytes = pcmFloatTo16BitPCM(data);
                 try {
                     await broadcast.connection.invoke("BroadcastAudioChunk", broadcast.eventId, bytes);
                 } catch (err) {
-                    console.error("broadcast error", err);
+                    console.error("[broadcast] Error sending chunk:", err);
                 }
             };
+            
             source.connect(processor);
             processor.connect(broadcast.audioCtx.destination);
             broadcast.processor = processor;
@@ -138,14 +151,32 @@ window.konfAudio = (function(){
                 if (broadcast.stream) {
                     broadcast.stream.getTracks().forEach(t => t.stop());
                 }
-                if (broadcast.connection) await broadcast.connection.stop();
+                // Note: Don't stop connection immediately - let invoke handle it
+                // This allows StopRecording to be called while connection is still active
             } catch {}
-            broadcast.connection = null;
             broadcast.processor = null;
             broadcast.stream = null;
         },
+        closeConnection: async function(){
+            try {
+                if (broadcast.connection && 
+                    broadcast.connection.state !== 'Disconnected' && 
+                    broadcast.connection.state !== 'Disconnecting') {
+                    await broadcast.connection.stop();
+                }
+            } catch (err) {
+                // Suppress connection close errors - they're expected during cleanup
+                console.log("Connection close (expected):", err.message);
+            }
+            broadcast.connection = null;
+        },
         invoke: async function(hubUrl, method, ...args){
-            if (!broadcast.connection) {
+            // Check if connection exists and is connected
+            const needsReconnect = !broadcast.connection || 
+                                  broadcast.connection.state === 'Disconnected' || 
+                                  broadcast.connection.state === 'Disconnecting';
+            
+            if (needsReconnect) {
                 broadcast.connection = new signalR.HubConnectionBuilder()
                     .withUrl(hubUrl)
                     .withAutomaticReconnect()
@@ -153,6 +184,51 @@ window.konfAudio = (function(){
                 await broadcast.connection.start();
             }
             return await broadcast.connection.invoke(method, ...args);
+        },
+        
+        // Manager connection for tracking listeners
+        joinManager: async function(hubUrl, eventId, dotNetRef) {
+            try {
+                if (broadcast.managerConnection) {
+                    await broadcast.managerConnection.stop();
+                }
+                
+                broadcast.managerConnection = new signalR.HubConnectionBuilder()
+                    .withUrl(hubUrl)
+                    .withAutomaticReconnect()
+                    .build();
+                
+                // Handle listener events
+                broadcast.managerConnection.on("ListenersSnapshot", (listeners) => {
+                    dotNetRef.invokeMethodAsync('UpdateListeners', listeners);
+                });
+                
+                broadcast.managerConnection.on("ListenerJoined", (cid, display) => {
+                    dotNetRef.invokeMethodAsync('AddListener', cid, display);
+                });
+                
+                broadcast.managerConnection.on("ListenerLeft", (cid) => {
+                    dotNetRef.invokeMethodAsync('RemoveListener', cid);
+                });
+                
+                // Start connection and wait for it to be ready
+                await broadcast.managerConnection.start();
+                
+                // Now join the manager group
+                await broadcast.managerConnection.invoke("JoinManager", eventId);
+            } catch (err) {
+                console.error("Error joining manager group:", err);
+            }
+        },
+        
+        leaveManager: async function() {
+            if (broadcast.managerConnection) {
+                try {
+                    await broadcast.managerConnection.stop();
+                } catch {}
+                broadcast.managerConnection = null;
+            }
         }
     };
 })();
+

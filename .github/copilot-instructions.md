@@ -40,6 +40,12 @@ Where to look for examples
 - EF context: `Schema/ApplicationDbContext.cs`.
 - User management: `Services/UserService.cs` and `Components/Pages/Admin/UserManagment.razor` (UI for users).
 - Email sending: `Services/EmailRequest.cs`.
+- Audio streaming: `Components/Pages/Events/StreamBroadcast.razor` (broadcast controls), `wwwroot/js/audioStream.js` (client-side streaming), `Hubs/AudioStreamHub.cs` (SignalR hub).
+
+Audio Streaming
+- Streaming UI: Separate page at `/events/{id}/stream-broadcast` for organizers/admins.
+- Recordings: Automatically started when streaming begins (no manual toggle needed).
+- SignalR: Loaded locally from `wwwroot/lib/signalr/signalr.min.js` (not CDN) to avoid CORS issues.
 
 Editing guidance
 - Small change example (add a user field):
