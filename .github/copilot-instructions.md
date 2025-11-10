@@ -32,6 +32,7 @@ Conventions & gotchas (project-specific)
 - Naming: this project uses camelCase property names in POCOs (e.g. `userName`, `userPassword`) and explicit `[Column(...)]` attributes to map to snake_case DB columns. Do not assume default EF naming conventions.
 - Sync vs Async: `UserService` uses synchronous EF core calls (e.g., `ToList()`, `SaveChanges()`). If introducing async variants, be consistent across the service layer and callers.
 - Secrets in repo: `appsettings.json` currently contains the DB connection string and `EmailRequest.cs` contains SMTP credentials. Be cautious when editing or committing changes that could leak secrets.
+- CSS organization: Layout styles are in `wwwroot/css/` (`mainlayout.css`, `navmenu.css`) for dynamic reload without recompilation. Do NOT use `.razor.css` scoped styles for layouts.
 
 Where to look for examples
 - App boot & auth rules: `Program.cs` (auth, DI, endpoints, static files, antiforgery).

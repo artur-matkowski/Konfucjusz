@@ -101,6 +101,9 @@ window.konfAudio = (function(){
             listen.playing = false;
         },
         startBroadcast: async function(hubUrl, eventId) {
+            if (typeof signalR === 'undefined') {
+                throw new Error('SignalR is not loaded. Please ensure the SignalR script is included before audioStream.js');
+            }
             broadcast.eventId = eventId;
             if (broadcast.connection) await broadcast.connection.stop();
             broadcast.connection = new signalR.HubConnectionBuilder()
