@@ -48,3 +48,5 @@ appsettings.*.local.json
 
 # Docker
 docker-data/
+
+**.wav

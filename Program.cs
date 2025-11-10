@@ -47,7 +47,10 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    options.MaximumReceiveMessageSize = 1024 * 1024; // 1MB (audio chunks can be large)
+});
 
 var app = builder.Build();
 

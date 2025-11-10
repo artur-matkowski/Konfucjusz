@@ -3,6 +3,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject ApplicationDbContext Db
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <h3>Event Recordings</h3>
 
@@ -39,12 +40,13 @@ else
                                 <small class="text-muted">Duration: @FormatDuration(rec.DurationSeconds)</small>
                             }
                         </div>
-                        <div>
+                        <div class="d-flex gap-2 align-items-center">
                             <a href="/recordings/@rec.FileName" class="btn btn-sm btn-primary" target="_blank" download>Download</a>
                             <audio controls class="ms-2" style="height:32px;">
                                 <source src="/recordings/@rec.FileName" type="audio/wav" />
                                 Your browser does not support audio playback.
                             </audio>
+                            <button class="btn btn-sm btn-danger" @onclick="() => DeleteRecording(rec)">🗑️ Delete</button>
                         </div>
                     </div>
                 </div>
@@ -86,5 +88,35 @@ else
             return $"{ts.Minutes}m {ts.Seconds}s";
         else
             return $"{ts.Seconds}s";
+    }
+
+    private async Task DeleteRecording(EventRecording recording)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", 
+            $"Are you sure you want to delete the recording from {recording.CreatedAt.ToLocalTime():f}?");
+        
+        if (!confirmed)
+            return;
+
+        try
+        {
+            // Delete file from disk
+            var filePath = Path.Combine("wwwroot", "recordings", recording.FileName);
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+
+            // Remove from database
+            Db.eventRecordings.Remove(recording);
+            await Db.SaveChangesAsync();
+
+            // Remove from UI list
+            Recordings.Remove(recording);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting recording: {ex.Message}");
+        }
     }
 }
