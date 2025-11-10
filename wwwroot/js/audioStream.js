@@ -44,45 +44,99 @@ window.konfAudio = (function(){
     function appendAndPlay() {
         if (listen.playing || listen.queue.length === 0) return;
         listen.playing = true;
-        const bytes = listen.queue.shift();
-        const float32 = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
-        // reconstruct from PCM16 -> Float32
-        const len = float32.length; // wrong length; reconstruct properly
-        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        const samples = new Float32Array(bytes.byteLength / 2);
-        for (let i = 0, o = 0; i < bytes.byteLength; i += 2, o++) {
-            const s = view.getInt16(i, true);
-            samples[o] = s / 0x8000;
-        }
-        ensureAudioContext(listen);
-        const buffer = listen.audioCtx.createBuffer(1, samples.length, listen.sampleRate);
-        buffer.getChannelData(0).set(samples);
-        const src = listen.audioCtx.createBufferSource();
-        src.buffer = buffer;
-        src.connect(listen.audioCtx.destination);
-        src.onended = function(){
+        
+        try {
+            const bytes = listen.queue.shift();
+            console.log(`[appendAndPlay] Processing chunk, size: ${bytes.length} bytes`);
+            
+            const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+            const samples = new Float32Array(bytes.byteLength / 2);
+            for (let i = 0, o = 0; i < bytes.byteLength; i += 2, o++) {
+                const s = view.getInt16(i, true);
+                samples[o] = s / 0x8000;
+            }
+            
+            ensureAudioContext(listen);
+            console.log(`[appendAndPlay] AudioContext state: ${listen.audioCtx.state}`);
+            
+            const buffer = listen.audioCtx.createBuffer(1, samples.length, listen.sampleRate);
+            buffer.getChannelData(0).set(samples);
+            const src = listen.audioCtx.createBufferSource();
+            src.buffer = buffer;
+            src.connect(listen.audioCtx.destination);
+            src.onended = function(){
+                console.log('[appendAndPlay] Audio buffer finished playing');
+                listen.playing = false;
+                appendAndPlay();
+            };
+            src.start();
+            listen.source = src;
+            console.log('[appendAndPlay] Audio buffer started');
+        } catch (error) {
+            console.error('[appendAndPlay] ERROR:', error);
             listen.playing = false;
-            appendAndPlay();
-        };
-        src.start();
-        listen.source = src;
+            // Try to continue with next chunk
+            if (listen.queue.length > 0) {
+                setTimeout(() => appendAndPlay(), 100);
+            }
+        }
     }
 
     return {
         startListening: async function(hubUrl, eventId, slug, token) {
+            console.log(`[startListening] Starting for event ${eventId}, slug: ${slug}, token: ${token}`);
             listen.eventId = eventId; listen.slug = slug; listen.token = token || null;
             ensureAudioContext(listen);
-            if (listen.connection) await listen.connection.stop();
+            
+            // Resume AudioContext if suspended (required by browser autoplay policies)
+            if (listen.audioCtx.state === 'suspended') {
+                console.log('[startListening] AudioContext suspended, attempting to resume...');
+                await listen.audioCtx.resume();
+                console.log(`[startListening] AudioContext state after resume: ${listen.audioCtx.state}`);
+            }
+            
+            if (listen.connection) {
+                console.log('[startListening] Stopping existing connection');
+                await listen.connection.stop();
+            }
+            
             listen.connection = new signalR.HubConnectionBuilder()
                 .withUrl(hubUrl)
                 .withAutomaticReconnect()
                 .build();
+            
             listen.connection.on("ReceiveAudio", (chunk) => {
-                listen.queue.push(new Uint8Array(chunk));
-                appendAndPlay();
+                try {
+                    console.log(`[ReceiveAudio] Received chunk, type: ${typeof chunk}, length: ${chunk?.length || 0}`);
+                    
+                    // SignalR sends byte[] as Base64 string in JSON
+                    let bytes;
+                    if (typeof chunk === 'string') {
+                        console.log('[ReceiveAudio] Converting from Base64 string');
+                        const binaryString = atob(chunk);
+                        bytes = new Uint8Array(binaryString.length);
+                        for (let i = 0; i < binaryString.length; i++) {
+                            bytes[i] = binaryString.charCodeAt(i);
+                        }
+                    } else {
+                        bytes = new Uint8Array(chunk);
+                    }
+                    
+                    console.log(`[ReceiveAudio] Processed chunk, size: ${bytes.length} bytes, queue length: ${listen.queue.length}`);
+                    listen.queue.push(bytes);
+                    appendAndPlay();
+                } catch (error) {
+                    console.error('[ReceiveAudio] ERROR:', error);
+                }
             });
+            
+            console.log('[startListening] Starting SignalR connection...');
             await listen.connection.start();
+            console.log('[startListening] SignalR connected, calling JoinListener...');
+            
             const ok = await listen.connection.invoke("JoinListener", eventId, slug, token || null);
+            console.log(`[startListening] JoinListener returned: ${ok}`);
+            
             if (!ok) {
                 console.warn("JoinListener denied");
                 return false;
