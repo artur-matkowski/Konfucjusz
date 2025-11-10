@@ -59,6 +59,15 @@
                 </div>
             </div>
 
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Debug Log <button class="btn btn-sm btn-outline-secondary" @onclick="ClearDebugLog">Clear</button></h5>
+                    <div id="debugLog" style="max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 4px;">
+                        <div id="debugLogContent"></div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card">
                 <div class="card-body">
                     <h5 class="card-title">Stream Information</h5>
@@ -231,7 +240,7 @@
             Console.WriteLine("[StreamBroadcast] Waiting 500ms before starting recording...");
             await Task.Delay(500); // Give broadcast time to initialize
             Console.WriteLine("[StreamBroadcast] Starting recording...");
-            var success = await JS.InvokeAsync<bool>("konfAudio.invoke", "/hubs/audio", "StartRecording", CurrentEvent.Id);
+            var success = await JS.InvokeAsync<bool>("konfAudio.startRecording", CurrentEvent.Id);
             Console.WriteLine($"[StreamBroadcast] StartRecording returned: {success}");
             if (success)
             {
@@ -263,7 +272,7 @@
             {
                 try
                 {
-                    var fileName = await JS.InvokeAsync<string?>("konfAudio.invoke", "/hubs/audio", "StopRecording", CurrentEvent.Id);
+                    var fileName = await JS.InvokeAsync<string?>("konfAudio.stopRecording", CurrentEvent.Id);
                     IsRecording = false;
                     if (!string.IsNullOrEmpty(fileName))
                     {
@@ -377,9 +386,52 @@
             InvokeAsync(StateHasChanged);
         }
     }
+
+    private async Task ClearDebugLog()
+    {
+        await JS.InvokeVoidAsync("eval", "document.getElementById('debugLogContent').innerHTML = ''");
+    }
     
     public void Dispose()
     {
         dotNetRef?.Dispose();
     }
 }
+
+<script>
+    // Intercept console.log and write to visible debug panel
+    (function() {
+        const debugLogContent = document.getElementById('debugLogContent');
+        if (!debugLogContent) return;
+        
+        const originalLog = console.log;
+        const originalError = console.error;
+        
+        function addLogEntry(message, type = 'log') {
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? 'red' : type === 'warn' ? 'orange' : 'black';
+            const entry = document.createElement('div');
+            entry.style.color = color;
+            entry.textContent = `[${timestamp}] ${message}`;
+            debugLogContent.appendChild(entry);
+            debugLogContent.parentElement.scrollTop = debugLogContent.parentElement.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addLogEntry(args.join(' '), 'log');
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addLogEntry(args.join(' '), 'error');
+        };
+        
+        console.warn = function(...args) {
+            console.log(...args);
+            addLogEntry(args.join(' '), 'warn');
+        };
+        
+        console.log('[DebugLog] Console interception active');
+    })();
+</script>

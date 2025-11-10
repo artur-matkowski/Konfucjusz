@@ -24,8 +24,15 @@ public class AudioStreamHub : Hub
         _serviceProvider = serviceProvider;
     }
 
+    public override async Task OnConnectedAsync()
+    {
+        Console.WriteLine($"[AudioStreamHub] Client connected: {Context.ConnectionId}");
+        await base.OnConnectedAsync();
+    }
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        Console.WriteLine($"[AudioStreamHub] Client disconnected: {Context.ConnectionId}, Exception: {exception?.Message}");
         if (ConnectionIndex.TryRemove(Context.ConnectionId, out var info))
         {
             if (EventGroups.TryGetValue(info.eventId, out var set))
@@ -112,33 +119,65 @@ public class AudioStreamHub : Hub
     // Organizer joins manager group to receive listener events
     public async Task<bool> JoinManager(int eventId)
     {
+        Console.WriteLine($"[AudioStreamHub] JoinManager called for event {eventId} by connection {Context.ConnectionId}");
         // Allow only authenticated organizers/admins in first iteration (checked in UI elsewhere)
         await Groups.AddToGroupAsync(Context.ConnectionId, ManagerGroup(eventId));
         // Send current listeners snapshot
         if (EventGroups.TryGetValue(eventId, out var set))
         {
             var list = set.Select(cid => new { cid, display = ConnectionIndex.TryGetValue(cid, out var info) ? info.display : "?" }).ToList();
+            Console.WriteLine($"[AudioStreamHub] Sending ListenersSnapshot with {list.Count} listeners");
             await Clients.Caller.SendAsync("ListenersSnapshot", list);
+        }
+        else
+        {
+            Console.WriteLine($"[AudioStreamHub] No event group found for event {eventId}, sending empty snapshot");
+            await Clients.Caller.SendAsync("ListenersSnapshot", new List<object>());
         }
         return true;
     }
 
     // Organizer broadcasts audio chunk (PCM16 little-endian)
+    private static int _chunkCounter = 0;
     public async Task BroadcastAudioChunk(int eventId, byte[] chunk)
     {
-        // Log first chunk to confirm audio is flowing
-        if (!EventGroups.ContainsKey(eventId))
+        try
         {
-            Console.WriteLine($"[AudioStreamHub] First audio chunk received for event {eventId}, size: {chunk.Length} bytes");
-        }
-        
-        // For v1 skip heavy validation and forward to group
-        await Clients.Group(GroupName(eventId)).SendAsync("ReceiveAudio", chunk);
+            _chunkCounter++;
+            // Log first few chunks to confirm audio is flowing
+            if (_chunkCounter <= 3 || _chunkCounter % 100 == 1)
+            {
+                Console.WriteLine($"[AudioStreamHub] Audio chunk #{_chunkCounter} received for event {eventId}, size: {chunk?.Length ?? 0} bytes");
+            }
+            
+            if (chunk == null)
+            {
+                Console.WriteLine($"[AudioStreamHub] ERROR: Received null chunk for event {eventId}");
+                throw new ArgumentNullException(nameof(chunk));
+            }
+            
+            // For v1 skip heavy validation and forward to group
+            await Clients.Group(GroupName(eventId)).SendAsync("ReceiveAudio", chunk);
 
-        // If recording active, append chunk
-        if (ActiveRecordings.TryGetValue(eventId, out var writer) && writer != null)
+            // If recording active, append chunk
+            if (ActiveRecordings.TryGetValue(eventId, out var writer) && writer != null)
+            {
+                if (_chunkCounter <= 3 || _chunkCounter % 100 == 1)
+                {
+                    Console.WriteLine($"[AudioStreamHub] Writing chunk #{_chunkCounter} to recording");
+                }
+                writer.AppendPcm16(chunk);
+            }
+            else if (_chunkCounter <= 3)
+            {
+                Console.WriteLine($"[AudioStreamHub] No active recording for event {eventId}");
+            }
+        }
+        catch (Exception ex)
         {
-            writer.AppendPcm16(chunk);
+            Console.WriteLine($"[AudioStreamHub] ERROR in BroadcastAudioChunk: {ex.GetType().Name}: {ex.Message}");
+            Console.WriteLine($"[AudioStreamHub] Stack trace: {ex.StackTrace}");
+            throw;
         }
     }
 

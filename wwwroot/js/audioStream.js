@@ -101,49 +101,102 @@ window.konfAudio = (function(){
             listen.playing = false;
         },
         startBroadcast: async function(hubUrl, eventId) {
-            if (typeof signalR === 'undefined') {
-                throw new Error('SignalR is not loaded. Please ensure the SignalR script is included before audioStream.js');
-            }
-            console.log(`[startBroadcast] Starting for event ${eventId}`);
-            broadcast.eventId = eventId;
-            if (broadcast.connection) {
-                console.log('[startBroadcast] Stopping existing connection');
-                await broadcast.connection.stop();
-            }
-            
-            broadcast.connection = new signalR.HubConnectionBuilder()
-                .withUrl(hubUrl)
-                .withAutomaticReconnect()
-                .build();
-            
-            console.log('[startBroadcast] Starting SignalR connection...');
-            await broadcast.connection.start();
-            console.log('[startBroadcast] SignalR connection established');
-
-            console.log('[startBroadcast] Requesting microphone access...');
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            console.log('[startBroadcast] Microphone access granted');
-            
-            broadcast.stream = stream;
-            broadcast.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const source = broadcast.audioCtx.createMediaStreamSource(stream);
-            const processor = broadcast.audioCtx.createScriptProcessor(4096, 1, 1);
-            
-            processor.onaudioprocess = async (e) => {
-                if (!broadcast.connection || broadcast.connection.state !== 'Connected') return;
-                const data = e.inputBuffer.getChannelData(0);
-                const bytes = pcmFloatTo16BitPCM(data);
-                try {
-                    await broadcast.connection.invoke("BroadcastAudioChunk", broadcast.eventId, bytes);
-                } catch (err) {
-                    console.error("[broadcast] Error sending chunk:", err);
+            try {
+                if (typeof signalR === 'undefined') {
+                    throw new Error('SignalR is not loaded. Please ensure the SignalR script is included before audioStream.js');
                 }
-            };
-            
-            source.connect(processor);
-            processor.connect(broadcast.audioCtx.destination);
-            broadcast.processor = processor;
-            return true;
+                console.log(`[startBroadcast] Starting for event ${eventId}, hubUrl: ${hubUrl}`);
+                console.log(`[startBroadcast] Current location: ${window.location.href}`);
+                
+                broadcast.eventId = eventId;
+                if (broadcast.connection) {
+                    console.log('[startBroadcast] Stopping existing connection');
+                    await broadcast.connection.stop();
+                }
+                
+                broadcast.connection = new signalR.HubConnectionBuilder()
+                    .withUrl(hubUrl)
+                    .withAutomaticReconnect()
+                    .build();
+                
+                console.log('[startBroadcast] Starting SignalR connection...');
+                await broadcast.connection.start();
+                console.log('[startBroadcast] SignalR connection established, state:', broadcast.connection.state);
+
+                console.log('[startBroadcast] Requesting microphone access...');
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log('[startBroadcast] Microphone access granted');
+                
+                broadcast.stream = stream;
+                broadcast.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                console.log('[startBroadcast] AudioContext created, state:', broadcast.audioCtx.state);
+                const source = broadcast.audioCtx.createMediaStreamSource(stream);
+                const processor = broadcast.audioCtx.createScriptProcessor(4096, 1, 1);
+                console.log('[startBroadcast] Audio processor created');
+                
+                let chunkCount = 0;
+                processor.onaudioprocess = async (e) => {
+                    chunkCount++;
+                    if (chunkCount === 1) {
+                        console.log('[broadcast] First audio process event triggered!');
+                    }
+                    if (!broadcast.connection || broadcast.connection.state !== 'Connected') {
+                        if (chunkCount === 1) {
+                            console.log('[broadcast] Connection not ready, state:', broadcast.connection?.state);
+                        }
+                        return;
+                    }
+                    const data = e.inputBuffer.getChannelData(0);
+                    const bytes = pcmFloatTo16BitPCM(data);
+                    
+                    if (chunkCount % 100 === 1) {
+                        console.log(`[broadcast] Sending chunk #${chunkCount}, size: ${bytes.length} bytes, type: ${bytes.constructor.name}`);
+                    }
+                    try {
+                        // Send Uint8Array directly - SignalR should handle it
+                        await broadcast.connection.invoke("BroadcastAudioChunk", broadcast.eventId, bytes);
+                    } catch (err) {
+                        console.error("[broadcast] Error sending chunk:", err);
+                        if (chunkCount === 1) {
+                            console.error("[broadcast] Full error details:", err);
+                            console.error("[broadcast] Chunk type:", bytes.constructor.name);
+                            console.error("[broadcast] First 10 bytes:", Array.from(bytes.slice(0, 10)));
+                        }
+                    }
+                };
+                
+                source.connect(processor);
+                processor.connect(broadcast.audioCtx.destination);
+                broadcast.processor = processor;
+                console.log('[startBroadcast] Audio pipeline connected successfully');
+                return true;
+            } catch (error) {
+                console.error('[startBroadcast] ERROR:', error);
+                console.error('[startBroadcast] Error stack:', error.stack);
+                throw error;
+            }
+        },
+        startRecording: async function(eventId) {
+            console.log(`[startRecording] Called for event ${eventId}`);
+            if (!broadcast.connection || broadcast.connection.state !== 'Connected') {
+                console.error('[startRecording] No active broadcast connection!');
+                throw new Error('Must start broadcast before recording');
+            }
+            console.log('[startRecording] Invoking StartRecording on broadcast connection...');
+            const result = await broadcast.connection.invoke("StartRecording", eventId);
+            console.log(`[startRecording] Result: ${result}`);
+            return result;
+        },
+        stopRecording: async function(eventId) {
+            console.log(`[stopRecording] Called for event ${eventId}`);
+            if (!broadcast.connection || broadcast.connection.state !== 'Connected') {
+                console.error('[stopRecording] No active broadcast connection!');
+                return null;
+            }
+            console.log('[stopRecording] Invoking StopRecording on broadcast connection...');
+            const result = await broadcast.connection.invoke("StopRecording", eventId);
+            console.log(`[stopRecording] Result: ${result}`);
+            return result;
         },
         stopBroadcast: async function(){
             try {
@@ -158,10 +211,19 @@ window.konfAudio = (function(){
             broadcast.stream = null;
         },
         closeConnection: async function(){
+            console.log('[closeConnection] Called, processor active:', !!broadcast.processor);
+            
+            // Don't close connection if we're actively broadcasting
+            if (broadcast.processor) {
+                console.log('[closeConnection] Ignoring - broadcast is active');
+                return;
+            }
+            
             try {
                 if (broadcast.connection && 
                     broadcast.connection.state !== 'Disconnected' && 
                     broadcast.connection.state !== 'Disconnecting') {
+                    console.log('[closeConnection] Stopping connection');
                     await broadcast.connection.stop();
                 }
             } catch (err) {
@@ -171,25 +233,38 @@ window.konfAudio = (function(){
             broadcast.connection = null;
         },
         invoke: async function(hubUrl, method, ...args){
-            // Check if connection exists and is connected
-            const needsReconnect = !broadcast.connection || 
-                                  broadcast.connection.state === 'Disconnected' || 
-                                  broadcast.connection.state === 'Disconnecting';
+            // Use existing broadcast connection if available and connected
+            console.log(`[invoke] Called for ${method}, broadcast.connection exists: ${!!broadcast.connection}, state: ${broadcast.connection?.state}`);
             
-            if (needsReconnect) {
-                broadcast.connection = new signalR.HubConnectionBuilder()
-                    .withUrl(hubUrl)
-                    .withAutomaticReconnect()
-                    .build();
-                await broadcast.connection.start();
+            if (broadcast.connection && broadcast.connection.state === 'Connected') {
+                console.log(`[invoke] Using existing broadcast connection for ${method}`);
+                return await broadcast.connection.invoke(method, ...args);
             }
-            return await broadcast.connection.invoke(method, ...args);
+            
+            // Otherwise create a temporary connection
+            console.log(`[invoke] Creating temporary connection for ${method}`);
+            const tempConnection = new signalR.HubConnectionBuilder()
+                .withUrl(hubUrl)
+                .withAutomaticReconnect()
+                .build();
+            await tempConnection.start();
+            console.log(`[invoke] Temporary connection started for ${method}`);
+            try {
+                const result = await tempConnection.invoke(method, ...args);
+                console.log(`[invoke] ${method} completed successfully`);
+                return result;
+            } finally {
+                console.log(`[invoke] Stopping temporary connection for ${method}`);
+                await tempConnection.stop();
+            }
         },
         
         // Manager connection for tracking listeners
         joinManager: async function(hubUrl, eventId, dotNetRef) {
             try {
+                console.log(`[joinManager] Joining for event ${eventId}, hubUrl: ${hubUrl}`);
                 if (broadcast.managerConnection) {
+                    console.log('[joinManager] Stopping existing manager connection');
                     await broadcast.managerConnection.stop();
                 }
                 
@@ -200,24 +275,32 @@ window.konfAudio = (function(){
                 
                 // Handle listener events
                 broadcast.managerConnection.on("ListenersSnapshot", (listeners) => {
+                    console.log(`[joinManager] Received ListenersSnapshot:`, listeners);
                     dotNetRef.invokeMethodAsync('UpdateListeners', listeners);
                 });
                 
                 broadcast.managerConnection.on("ListenerJoined", (cid, display) => {
+                    console.log(`[joinManager] Listener joined: ${display} (${cid})`);
                     dotNetRef.invokeMethodAsync('AddListener', cid, display);
                 });
                 
                 broadcast.managerConnection.on("ListenerLeft", (cid) => {
+                    console.log(`[joinManager] Listener left: ${cid}`);
                     dotNetRef.invokeMethodAsync('RemoveListener', cid);
                 });
                 
                 // Start connection and wait for it to be ready
+                console.log('[joinManager] Starting SignalR connection...');
                 await broadcast.managerConnection.start();
+                console.log('[joinManager] SignalR connection established, state:', broadcast.managerConnection.state);
                 
                 // Now join the manager group
+                console.log('[joinManager] Invoking JoinManager...');
                 await broadcast.managerConnection.invoke("JoinManager", eventId);
+                console.log('[joinManager] Successfully joined manager group');
             } catch (err) {
-                console.error("Error joining manager group:", err);
+                console.error("[joinManager] ERROR:", err);
+                console.error("[joinManager] Error stack:", err.stack);
             }
         },
         
