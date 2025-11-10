@@ -3,66 +3,78 @@
    ========================================
    Define your 3 base colors here. Everything else derives from these.
    
-   Primary   - Main brand color (links, buttons, focus states)
-   Secondary - Neutral/grayscale (borders, disabled states)
-   Accent    - Success/Error states (validation, alerts)
+   Primary   - Main brand color (buttons, links, focus states)
+   Secondary - Neutral/grayscale (borders, muted text)
+   Accent    - Success/positive (validation, success messages)
 */
 
 :root {
-    /* ============= BASE COLORS (EDIT THESE) ============= */
-    --color-primary-base: #1b6ec2;      /* Blue - your main brand color */
-    --color-secondary-base: #6c757d;    /* Gray - neutral color */
-    --color-accent-base: #198754;       /* Green - success/positive actions */
+    /* ============= BASE COLORS (EDIT THESE 3 ONLY!) ============= */
+    --color-primary-base: #744991;      /* Your main brand color (e.g., pink/red) */
+    --color-secondary-base: #772b36;    /* Your neutral color (e.g., green - but typically gray) */
+    --color-accent-base: #854926;       /* Your success/positive color (typically green) */
     
-    /* ============= DERIVED PRIMARY SHADES ============= */
-    --color-primary-darker: #1861ac;    /* Primary button border */
-    --color-primary-dark: #0b5ed7;      /* Primary hover state */
-    --color-primary: var(--color-primary-base);
-    --color-primary-light: #258cfb;     /* Focus ring, lighter blue */
-    --color-primary-lighter: #006bb7;   /* Link color, slightly lighter */
+    /* ============= CALCULATED DERIVED SHADES ============= */
+    /* Darker = mix with black (20%), Lighter = mix with white (40%) */
+    --color-primary-darker: color-mix(in srgb, var(--color-primary-base) 80%, black);
+    --color-primary-dark: color-mix(in srgb, var(--color-primary-base) 85%, black);
+    --color-primary-light: color-mix(in srgb, var(--color-primary-base) 60%, white);
+    --color-primary-lighter: color-mix(in srgb, var(--color-primary-base) 70%, white);
     
-    /* ============= DERIVED SECONDARY SHADES ============= */
-    --color-secondary-darker: #495057;
-    --color-secondary-dark: #565e64;
-    --color-secondary: var(--color-secondary-base);
-    --color-secondary-light: #929292;   /* Borders, checkboxes */
-    --color-secondary-lighter: #adb5bd;
+    --color-secondary-darker: color-mix(in srgb, var(--color-secondary-base) 70%, black);
+    --color-secondary-dark: color-mix(in srgb, var(--color-secondary-base) 80%, black);
+    --color-secondary-light: color-mix(in srgb, var(--color-secondary-base) 50%, white);
+    --color-secondary-lighter: color-mix(in srgb, var(--color-secondary-base) 40%, white);
     
-    /* ============= DERIVED ACCENT SHADES (Success/Error) ============= */
-    --color-success-dark: #146c43;
-    --color-success: var(--color-accent-base);
-    --color-success-light: #26b050;     /* Validation success */
+    --color-success-darker: color-mix(in srgb, var(--color-accent-base) 75%, black);
+    --color-success-light: color-mix(in srgb, var(--color-accent-base) 60%, white);
     
-    --color-error-dark: #b02a37;
-    --color-error: #dc3545;             /* Bootstrap danger */
-    --color-error-light: #e50000;       /* Validation errors */
+    /* Error/Danger stays Bootstrap red (not derived from base colors) */
+    --color-danger-base: #dc3545;
+    --color-danger-darker: color-mix(in srgb, var(--color-danger-base) 75%, black);
+    --color-danger-light: color-mix(in srgb, var(--color-danger-base) 60%, white);
     
-    --color-warning: #ffc107;           /* Derived from Bootstrap */
-    --color-info: #0dcaf0;              /* Derived from Bootstrap */
+    /* ============= OVERRIDE BOOTSTRAP VARIABLES ============= */
+    /* This is what actually changes Bootstrap component colors! */
+    --bs-primary: var(--color-primary-base);
+    --bs-primary-rgb: 197, 42, 91;  /* RGB of --color-primary-base (update when changing base color) */
     
-    /* ============= NEUTRAL COLORS ============= */
-    --color-white: #ffffff;
-    --color-black: #212529;
-    --color-gray-100: #f8f9fa;
-    --color-gray-200: #e9ecef;
-    --color-gray-300: #dee2e6;
-    --color-gray-400: #ced4da;
+    --bs-secondary: var(--color-secondary-base);
+    --bs-secondary-rgb: 0, 196, 75;  /* RGB of --color-secondary-base */
     
-    /* ============= SEMANTIC COLORS (Use these in your code) ============= */
-    --color-text-primary: var(--color-black);
-    --color-text-secondary: var(--color-secondary);
-    --color-text-link: var(--color-primary-lighter);
-    --color-text-error: var(--color-error-light);
+    --bs-success: var(--color-accent-base);
+    --bs-success-rgb: 25, 135, 84;  /* RGB of --color-accent-base */
     
-    --color-bg-body: var(--color-white);
-    --color-bg-error: #b32121;
+    --bs-danger: var(--color-danger-base);
+    --bs-danger-rgb: 220, 53, 69;
     
+    /* Keep Bootstrap's other colors */
+    --bs-warning: #ffc107;
+    --bs-info: #0dcaf0;
+    
+    /* ============= LAYOUT & BACKGROUND COLORS ============= */
+    /* Body background - subtle gradient with primary tint */
+    --bs-body-bg: linear-gradient(135deg, 
+        color-mix(in srgb, var(--bs-primary) 95%, white) 0%, 
+        color-mix(in srgb, var(--bs-secondary) 98%, white) 100%);
+    --bs-body-bg-solid: color-mix(in srgb, var(--bs-primary) 4%, white);
+    
+    /* Input/Form backgrounds - slightly lighter than body */
+    --bs-body-bg-input: rgb(242, 247, 208);
+    --bs-border-color: color-mix(in srgb, var(--bs-primary) 20%, #dee2e6);
+    
+    /* Text colors with auto-contrast */
+    --bs-body-color: #212529;  /* Dark text on light backgrounds */
+    --bs-heading-color: color-mix(in srgb, var(--bs-primary) 80%, black);
+    
+    /* ============= CUSTOM APP COLORS ============= */
+    --color-text-link: var(--color-primary-base);
+    --color-text-error: var(--color-danger-light);
+    --color-bg-error: var(--color-danger-darker);
     --color-border-default: var(--color-secondary-light);
-    --color-border-primary: var(--color-primary-darker);
-    --color-border-success: var(--color-success-light);
-    --color-border-error: var(--color-error-light);
-    
     --color-focus-ring: var(--color-primary-light);
+    --color-text-on-primary: white;  /* Text color when on primary background */
+    --color-text-on-dark: white;     /* Text color when on dark backgrounds */
     
     /* ============= SPACING & LAYOUT ============= */
     --spacing-content-top: 1.1rem;
@@ -73,6 +85,17 @@
    ======================================== */
 html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--bs-heading-color);
+}
+
+/* Apply gradient background to body */
+body {
+    background: var(--bs-body-bg-solid);
+    background: var(--bs-body-bg);
+    background-attachment: fixed;
 }
 
 /* ========================================
@@ -86,9 +109,9 @@ a, .btn-link {
    BUTTONS
    ======================================== */
 .btn-primary {
-    color: var(--color-white);
-    background-color: var(--color-primary);
-    border-color: var(--color-border-primary);
+    color: #fff;
+    background-color: var(--bs-primary);
+    border-color: var(--color-primary-darker);
 }
 
 /* ========================================
@@ -99,11 +122,41 @@ a, .btn-link {
 .btn-link.nav-link:focus, 
 .form-control:focus, 
 .form-check-input:focus {
-    box-shadow: 0 0 0 0.1rem var(--color-white), 0 0 0 0.25rem var(--color-focus-ring);
+    box-shadow: 0 0 0 0.1rem #fff, 0 0 0 0.25rem var(--color-focus-ring);
 }
 
 h1:focus {
     outline: none;
+}
+
+/* ========================================
+   FORMS & INPUTS
+   ======================================== */
+.form-control, .form-select {
+    background-color: var(--bs-body-bg-input);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+
+.form-control:focus, .form-select:focus {
+    background-color: var(--bs-body-bg-input);
+    border-color: var(--bs-primary);
+}
+
+.form-control::placeholder {
+    color: color-mix(in srgb, var(--bs-body-color) 50%, transparent);
+}
+
+/* ========================================
+   CARDS & CONTAINERS
+   ======================================== */
+.card {
+    background-color: color-mix(in srgb, white 95%, var(--bs-primary));
+    border-color: var(--bs-border-color);
+}
+
+.modal-content {
+    background-color: var(--bs-body-bg-input);
 }
 
 /* ========================================
@@ -117,11 +170,11 @@ h1:focus {
    VALIDATION STATES
    ======================================== */
 .valid.modified:not([type=checkbox]) {
-    outline: 1px solid var(--color-border-success);
+    outline: 1px solid var(--bs-success);
 }
 
 .invalid {
-    outline: 1px solid var(--color-border-error);
+    outline: 1px solid var(--bs-danger);
 }
 
 .validation-message {
@@ -134,7 +187,7 @@ h1:focus {
 .blazor-error-boundary {
     background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi4yODM3IDI2Ny4zODcgODkuNzkyMSAyNjcuMzg3IDg3LjMwMDUgMjY2LjExNiA4Ni4wNTQ3IDI2My41NzYgODYuMDU0N1oiIGZpbGw9IiNGRkU1MDAiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvZz48L3N2Zz4=) no-repeat 1rem/1.8rem, var(--color-bg-error);
     padding: 1rem 1rem 1rem 3.7rem;
-    color: var(--color-white);
+    color: #fff;
 }
 
 .blazor-error-boundary::after {
