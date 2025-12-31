@@ -1,0 +1,45 @@
+{
+  "version": "1.0",
+  "project": {
+    "name": "Konfucjusz",
+    "type": "web-app",
+    "language": "C#",
+    "created": "2025-12-31"
+  },
+  "technology_stack": {
+    "language": "C#",
+    "frameworks": [".NET 8", "Blazor Server", "EF Core"],
+    "libraries": ["MailKit", "SignalR"],
+    "build_tools": ["dotnet-cli"],
+    "package_manager": "dotnet"   
+  },
+  "testing_strategy": {
+    "framework": "xUnit", 
+    "types": ["unit", "integration"],
+    "coverage_target": "70%",
+    "test_structure": "Tests per service/component; integration tests for key flows like registration and email sending"
+  },
+  "development_environment": {
+    "ide": "vscode",
+    "linter": "none",
+    "formatter": "dotnet-format",
+    "debugger": "vs-debugger"
+  },
+  "production_target": {
+    "deployment": "docker",
+    "environment": "staging",
+    "ci_cd": "github-actions"
+  },
+  "architecture": {
+    "patterns": ["layered", "repository"],
+    "principles": ["solid", "dry", "clean-code"],
+    "complexity_metrics": {
+      "max_function_length": 50,
+      "max_class_methods": 20,
+      "coupling_threshold": "medium"
+    }
+  },
+  "features": [],
+  "last_updated": "2025-12-31",
+  "session_count": 1
+}

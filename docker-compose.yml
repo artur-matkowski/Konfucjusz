@@ -30,24 +30,17 @@ services:
       SlugSecret: ${SLUG_SECRET:-default-slug-secret-change-in-production}
       # ASP.NET Core environment
       ASPNETCORE_ENVIRONMENT: Development
-      # SMTP settings for Mailhog (adjust if you change mail provider)
-      Smtp__Host: mailhog
-      Smtp__Port: 1025
-      Smtp__UseSsl: "false"
-      Smtp__Username: ""
-      Smtp__Password: ""
-      Smtp__FromAddress: "test@example.local"
+      # SMTP settings for OVH (real mail server). All values should come from .env and NOT be committed.
+      Smtp__Host: ${SMTP_HOST}
+      Smtp__Port: ${SMTP_PORT:-587}
+      Smtp__UseStartTls: "${SMTP_USE_STARTTLS:-true}"
+      Smtp__Username: ${SMTP_USERNAME}
+      Smtp__Password: ${SMTP_PASSWORD}
+      Smtp__From: ${SMTP_FROM}
     ports:
       - "8080:80"  # host:container
     volumes:
       - recordings-data:/app/recordings
-
-  mailhog:
-    image: mailhog/mailhog
-    restart: unless-stopped
-    ports:
-      - "1025:1025"    # SMTP
-      - "8025:8025"    # Web UI
 
 volumes:
   db-data:
