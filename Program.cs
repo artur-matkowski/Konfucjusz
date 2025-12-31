@@ -37,6 +37,11 @@ builder.Services.AddScoped<ParticipantService>(sp =>
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
 builder.Services.AddScoped<EmailRequest>();
 
+// Bind captcha options (currently hCaptcha) and register verifier.
+builder.Services.Configure<CaptchaOptions>(builder.Configuration.GetSection("Captcha"));
+builder.Services.AddHttpClient<ICaptchaVerifier, HcaptchaVerifier>();
+
+
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(opt =>
     {
