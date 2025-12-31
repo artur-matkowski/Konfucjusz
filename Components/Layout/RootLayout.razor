@@ -1,0 +1,20 @@
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Web
+
+<HeadContent>
+    <meta charset="utf-8" />
+    <title>Konfucjusz</title>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="css/mainlayout.css" />
+    <link rel="stylesheet" href="css/navmenu.css" />
+    <link rel="stylesheet" href="bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <script src="https://hcaptcha.com/1/api.js" async defer></script>
+    <script src="js/hcaptchaInterop.js"></script>
+</HeadContent>
+
+<LayoutView Layout="typeof(MainLayout)">
+    @Body
+</LayoutView>
