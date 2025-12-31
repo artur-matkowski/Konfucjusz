@@ -1,16 +1,46 @@
 version: '3.8'
+
 services:
   db:
+    container_name: konfucjusz_db
     image: postgres:15
     restart: unless-stopped
     environment:
       POSTGRES_DB: konfucjusz_db
       POSTGRES_USER: konfucjusz
-      POSTGRES_PASSWORD: konfucjuszpass
+      # WARNING: weak dev password. Override via DB_PASSWORD in .env for anything non-trivial.
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-konfucjuszpass}
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
+
+  app:
+    container_name: konfucjusz_app
+    # TODO: replace this with your real registry/image:tag before deploying
+    image: ghcr.io/artur-matkowski/konfucjusz:dev
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      # Match Program.cs: "MyConnection"
+      ConnectionStrings__MyConnection: >
+        Host=db;Port=5432;Database=konfucjusz_db;Username=konfucjusz;Password=${DB_PASSWORD:-konfucjuszpass}
+      # Slug secret: MUST override in .env (non-default) before public deployment.
+      SlugSecret: ${SLUG_SECRET:-default-slug-secret-change-in-production}
+      # ASP.NET Core environment
+      ASPNETCORE_ENVIRONMENT: Development
+      # SMTP settings for Mailhog (adjust if you change mail provider)
+      Smtp__Host: mailhog
+      Smtp__Port: 1025
+      Smtp__UseSsl: "false"
+      Smtp__Username: ""
+      Smtp__Password: ""
+      Smtp__FromAddress: "test@example.local"
+    ports:
+      - "8080:80"  # host:container
+    volumes:
+      - recordings-data:/app/recordings
 
   mailhog:
     image: mailhog/mailhog
@@ -21,3 +51,4 @@ services:
 
 volumes:
   db-data:
+  recordings-data:
