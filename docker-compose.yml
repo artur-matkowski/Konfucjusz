@@ -37,6 +37,9 @@ services:
       Smtp__Username: ${SMTP_USERNAME}
       Smtp__Password: ${SMTP_PASSWORD}
       Smtp__From: ${SMTP_FROM}
+      # hCaptcha configuration
+      Captcha__hCaptcha__SiteKey: ${Captcha__hCaptcha__SiteKey}
+      Captcha__hCaptcha__Secret: ${Captcha__hCaptcha__Secret}
     ports:
       - "8080:80"  # host:container
     volumes:

@@ -25,6 +25,7 @@
 
 ## Completed (Last Sprint)
 - [x] **Remove unreliable captcha system from registration** - Removed math-based captcha from Register.razor (2026-01-02)
+- [x] **Implement hCaptcha bot protection** - Added Texnomic.Blazor.hCaptcha integration to registration form (2026-01-02)
 
 ## Blocked Items
 - [ ] **OVH SMTP integration finalization** - Blocked by: exact OVH SMTP host/port/encryption details and credentials.
