@@ -135,9 +135,10 @@
                 creatorId = CurrentUserId;
             }
 
-            var created = await EventSvc.CreateEventAsync(newEvent, creatorId);
+            // Use CreateEventWithSlugAsync to generate slug immediately
+            var created = await EventSvc.CreateEventWithSlugAsync(newEvent, creatorId);
             
-            StatusMessage = "Event created successfully.";
+            StatusMessage = $"Event created successfully with slug: {created.Slug}";
             StatusCss = "alert-success";
 
             await LoadEventsAsync();

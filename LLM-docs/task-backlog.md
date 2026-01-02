@@ -24,6 +24,11 @@
 - [ ] **Azure-ready deployment** - Plan container deployment and secret management for Azure.
 
 ## Completed (Last Sprint)
+- [x] **Fix missing event enlist links (slug generation)** - Added slug generation to all event creation flows (2026-01-02)
+  - Fixed EventList.razor to use CreateEventWithSlugAsync
+  - Fixed EventEdit.razor to call EnsureSlugAsync on save
+  - Added comprehensive logging to EventService
+  - Silenced EF Core database query spam
 - [x] **Remove unreliable captcha system from registration** - Removed math-based captcha from Register.razor (2026-01-02)
 - [x] **Implement hCaptcha bot protection** - Added Texnomic.Blazor.hCaptcha integration to registration form (2026-01-02)
 
