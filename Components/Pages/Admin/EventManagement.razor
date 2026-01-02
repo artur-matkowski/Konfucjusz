@@ -6,8 +6,18 @@
 @using Microsoft.AspNetCore.Components
 @attribute [Authorize(Roles = "Administrator")]
 @inject ApplicationDbContext Db
+@inject EventService EventSvc
+@inject IJSRuntime JS
 
 <h3>Event Management</h3>
+
+@if (!string.IsNullOrEmpty(StatusMessage))
+{
+    <div class="alert @StatusCssClass alert-dismissible fade show" role="alert">
+        @StatusMessage
+        <button type="button" class="btn-close" @onclick="() => StatusMessage = null"></button>
+    </div>
+}
 
 <div class="table-responsive">
     <table class="table table-striped table-hover align-middle">
@@ -144,6 +154,8 @@
 @code {
     private List<Event> Events { get; set; } = new();
     private List<int> EditedIds { get; set; } = new();
+    private string? StatusMessage { get; set; }
+    private string StatusCssClass { get; set; } = "alert-info";
 
     protected override async Task OnInitializedAsync()
     {
@@ -152,13 +164,17 @@
 
     private async Task LoadEventsAsync()
     {
-        Events = await Db.events.OrderBy(e => e.Id).ToListAsync();
+        // Use AsNoTracking to prevent auto-save behavior
+        // Events will only be saved when SaveAsync is explicitly called
+        Events = await Db.events.AsNoTracking().OrderBy(e => e.Id).ToListAsync();
     }
 
     private async Task AddNewEventAsync()
     {
         try
         {
+            await JS.InvokeVoidAsync("console.log", "=== CLIENT: AddNewEventAsync START ===");
+            
             var now = DateTime.UtcNow;
             var newEvent = new Event
             {
@@ -173,13 +189,26 @@
                 Searchable = true
             };
 
-            Db.events.Add(newEvent);
-            await Db.SaveChangesAsync();
+            await JS.InvokeVoidAsync("console.log", "CLIENT: Calling EventSvc.CreateEventWithSlugAsync...");
+            
+            // Use EventService to create event with slug generation
+            var createdEvent = await EventSvc.CreateEventWithSlugAsync(newEvent);
+            
+            await JS.InvokeVoidAsync("console.log", $"CLIENT: Event created. ID: {createdEvent.Id}, Slug: {createdEvent.Slug ?? "(null)"}");
+            
             await LoadEventsAsync();
+            
+            StatusMessage = $"New event created with ID: {createdEvent.Id}, Slug: {createdEvent.Slug ?? "(none)"}";
+            StatusCssClass = "alert-success";
+            
+            await JS.InvokeVoidAsync("console.log", "=== CLIENT: AddNewEventAsync END ===");
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex);
+            Console.WriteLine($"SERVER ERROR in AddNewEventAsync: {ex}");
+            StatusMessage = $"Error creating event: {ex.Message}";
+            StatusCssClass = "alert-danger";
+            await JS.InvokeVoidAsync("console.error", $"CLIENT ERROR in AddNewEventAsync: {ex.Message}");
         }
     }
 
@@ -187,14 +216,34 @@
     {
         try
         {
-            Db.events.Update(evt);
+            await JS.InvokeVoidAsync("console.log", $"=== CLIENT: SaveAsync START === Event ID: {evt.Id}, Current Slug: {evt.Slug ?? "(null)"}");
+            
+            // Since we're using AsNoTracking, we need to attach and mark as modified
+            Db.events.Attach(evt);
+            Db.Entry(evt).State = EntityState.Modified;
             await Db.SaveChangesAsync();
+            
+            await JS.InvokeVoidAsync("console.log", "CLIENT: Event updated in DB, calling EnsureSlugAsync...");
+            
+            // Ensure slug is generated after save (in case it was missing)
+            var slugGenerated = await EventSvc.EnsureSlugAsync(evt);
+            
+            await JS.InvokeVoidAsync("console.log", $"CLIENT: EnsureSlugAsync returned: {slugGenerated}, Final Slug: {evt.Slug ?? "(null)"}");
+            
             EditedIds.RemoveAll(x => x == evt.Id);
             await LoadEventsAsync();
+            
+            StatusMessage = $"Event '{evt.Title}' saved successfully. Slug: {evt.Slug ?? "(none)"}";
+            StatusCssClass = "alert-success";
+            
+            await JS.InvokeVoidAsync("console.log", "=== CLIENT: SaveAsync END ===");
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex);
+            Console.WriteLine($"SERVER ERROR in SaveAsync: {ex}");
+            StatusMessage = $"Error saving event: {ex.Message}";
+            StatusCssClass = "alert-danger";
+            await JS.InvokeVoidAsync("console.error", $"CLIENT ERROR in SaveAsync: {ex.Message}");
         }
     }
 

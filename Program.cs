@@ -29,7 +29,13 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddScoped<UserService>();
-builder.Services.AddScoped<EventService>();
+// EventService requires slug secret for generating enlistment links
+var slugSecretForEventService = builder.Configuration["SlugSecret"] ?? "default-slug-secret-change-in-production";
+builder.Services.AddScoped<EventService>(sp => 
+    new EventService(
+        sp.GetRequiredService<ApplicationDbContext>(), 
+        slugSecretForEventService,
+        sp.GetRequiredService<ILogger<EventService>>()));
 // ParticipantService requires slug secret - fetch from config or environment
 var slugSecret = builder.Configuration["SlugSecret"] ?? "default-slug-secret-change-in-production";
 builder.Services.AddScoped<ParticipantService>(sp => 
