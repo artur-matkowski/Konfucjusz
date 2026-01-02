@@ -24,6 +24,12 @@
 - [ ] **Azure-ready deployment** - Plan container deployment and secret management for Azure.
 
 ## Completed (Last Sprint)
+- [x] **Administrator bulk event deletion** - Added checkbox selection and simple confirmation for efficient bulk deletion (2026-01-02)
+  - Implemented DeleteMultipleEventsWithCleanupAsync in EventService
+  - Added checkbox column and selection toolbar to EventManagement
+  - Removed individual delete buttons (forced bulk workflow)
+  - Created simple confirmation dialog (no typing required)
+  - Comprehensive documentation created
 - [x] **Fix missing event enlist links (slug generation)** - Added slug generation to all event creation flows (2026-01-02)
   - Fixed EventList.razor to use CreateEventWithSlugAsync
   - Fixed EventEdit.razor to call EnsureSlugAsync on save
