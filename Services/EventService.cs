@@ -1,12 +1,23 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 public class EventService
 {
     protected readonly ApplicationDbContext _db;
+    private readonly string _slugSecret;
+    private readonly ILogger<EventService> _logger;
 
-    public EventService(ApplicationDbContext db)
+    /// <summary>
+    /// Initialize EventService with database context and slug generation secret.
+    /// </summary>
+    /// <param name="db">Database context</param>
+    /// <param name="slugSecret">Secret for generating secure event slugs</param>
+    /// <param name="logger">Logger for tracking service operations</param>
+    public EventService(ApplicationDbContext db, string slugSecret, ILogger<EventService> logger)
     {
         _db = db;
+        _slugSecret = slugSecret;
+        _logger = logger;
     }
 
     /// <summary>
@@ -124,5 +135,102 @@ public class EventService
         }
 
         return newEvent;
+    }
+
+    /// <summary>
+    /// Create a new event with automatic slug generation and optionally add the creator as first organizer.
+    /// This method ensures the event has a valid enlistment slug immediately after creation.
+    /// </summary>
+    /// <param name="newEvent">Event to create</param>
+    /// <param name="creatorUserId">Optional user ID to add as first organizer</param>
+    /// <returns>Created event with generated slug</returns>
+    public async Task<Event> CreateEventWithSlugAsync(Event newEvent, int? creatorUserId = null)
+    {
+        _logger.LogInformation("=== CreateEventWithSlugAsync START ===");
+        _logger.LogInformation("Event Title: {Title}, Description: {Description}", newEvent.Title, newEvent.Description);
+        _logger.LogInformation("CreatorUserId: {CreatorUserId}", creatorUserId?.ToString() ?? "null");
+        
+        _db.events.Add(newEvent);
+        await _db.SaveChangesAsync();
+        
+        _logger.LogInformation("Event saved to database. Event ID: {EventId}, CreationTimestamp: {CreationTimestamp}", 
+            newEvent.Id, newEvent.CreationTimestamp);
+
+        // Generate slug after ID is assigned by database
+        if (string.IsNullOrEmpty(newEvent.Slug))
+        {
+            _logger.LogInformation("Slug is empty, generating new slug...");
+            
+            // Ensure CreationTimestamp has a value
+            if (newEvent.CreationTimestamp == default)
+            {
+                newEvent.CreationTimestamp = DateTime.UtcNow;
+                _logger.LogWarning("CreationTimestamp was default, set to UtcNow: {Timestamp}", newEvent.CreationTimestamp);
+            }
+
+            newEvent.Slug = Event.GenerateSlug(newEvent.Id, newEvent.CreationTimestamp, _slugSecret);
+            _logger.LogInformation("Generated slug: {Slug}", newEvent.Slug);
+            
+            _db.events.Update(newEvent);
+            await _db.SaveChangesAsync();
+            _logger.LogInformation("Slug saved to database successfully");
+        }
+        else
+        {
+            _logger.LogInformation("Event already has slug: {Slug}", newEvent.Slug);
+        }
+
+        // Add creator as organizer
+        if (creatorUserId.HasValue)
+        {
+            _logger.LogInformation("Adding creator {UserId} as organizer", creatorUserId.Value);
+            _db.eventOrganizers.Add(new EventOrganizer 
+            { 
+                EventId = newEvent.Id, 
+                UserId = creatorUserId.Value 
+            });
+            await _db.SaveChangesAsync();
+            _logger.LogInformation("Creator added as organizer successfully");
+        }
+
+        _logger.LogInformation("=== CreateEventWithSlugAsync END === Event ID: {EventId}, Slug: {Slug}", 
+            newEvent.Id, newEvent.Slug);
+        return newEvent;
+    }
+
+    /// <summary>
+    /// Ensure an existing event has a slug. Generates one if missing.
+    /// Useful for backfilling slugs on existing events or after save operations.
+    /// </summary>
+    /// <param name="evt">Event to check and update</param>
+    /// <returns>True if slug was generated, false if already existed</returns>
+    public async Task<bool> EnsureSlugAsync(Event evt)
+    {
+        _logger.LogInformation("=== EnsureSlugAsync START === Event ID: {EventId}, Current Slug: {Slug}", 
+            evt.Id, evt.Slug ?? "(null)");
+            
+        if (string.IsNullOrEmpty(evt.Slug))
+        {
+            _logger.LogInformation("Slug is missing, generating...");
+            
+            // Ensure CreationTimestamp has a value
+            if (evt.CreationTimestamp == default)
+            {
+                evt.CreationTimestamp = DateTime.UtcNow;
+                _logger.LogWarning("CreationTimestamp was default, set to UtcNow: {Timestamp}", evt.CreationTimestamp);
+            }
+
+            evt.Slug = Event.GenerateSlug(evt.Id, evt.CreationTimestamp, _slugSecret);
+            _logger.LogInformation("Generated slug: {Slug}", evt.Slug);
+            
+            _db.events.Update(evt);
+            await _db.SaveChangesAsync();
+            
+            _logger.LogInformation("=== EnsureSlugAsync END === Slug generated and saved: {Slug}", evt.Slug);
+            return true;
+        }
+        
+        _logger.LogInformation("=== EnsureSlugAsync END === Slug already exists: {Slug}", evt.Slug);
+        return false;
     }
 }

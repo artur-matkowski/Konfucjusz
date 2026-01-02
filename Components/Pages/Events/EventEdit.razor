@@ -419,7 +419,17 @@
             Db.events.Update(CurrentEvent);
             await Db.SaveChangesAsync();
 
-            StatusMessage = "Event updated successfully.";
+            // Ensure slug is generated if missing
+            var slugGenerated = await EventSvc.EnsureSlugAsync(CurrentEvent);
+            
+            if (slugGenerated)
+            {
+                StatusMessage = $"Event updated successfully. Slug generated: {CurrentEvent.Slug}";
+            }
+            else
+            {
+                StatusMessage = "Event updated successfully.";
+            }
             StatusCss = "alert-success";
 
             // After a successful save, notify participants of updated event details
