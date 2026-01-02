@@ -24,7 +24,7 @@
 - [ ] **Azure-ready deployment** - Plan container deployment and secret management for Azure.
 
 ## Completed (Last Sprint)
-- [ ] *(none yet)*
+- [x] **Remove unreliable captcha system from registration** - Removed math-based captcha from Register.razor (2026-01-02)
 
 ## Blocked Items
 - [ ] **OVH SMTP integration finalization** - Blocked by: exact OVH SMTP host/port/encryption details and credentials.
