@@ -40,7 +40,7 @@
                 }
             }
 
-            @* Show any other error (captcha, db etc.) as an alert when registration not successful *@
+            @* Show any other error (db etc.) as an alert when registration not successful *@
             @if (!string.IsNullOrWhiteSpace(ErrorMessage))
             {
                 <div class="alert alert-danger" role="alert">
@@ -75,14 +75,7 @@
                 <InputText @bind-Value="Model.eMail" class="form-control" type="email" placeholder="Email" />
                 <ValidationMessage For="() => Model.eMail" />
             </div>
-            <div class="mb-3">
-                <label>Captcha: solve the math</label>
-                <div class="d-flex gap-2 align-items-center">
-                    <span class="fs-5">@CaptchaA + @CaptchaB =</span>
-                    <InputText @bind-Value="Model.CaptchaAnswer" class="form-control" style="max-width:120px;" />
-                </div>
-                <ValidationMessage For="() => Model.CaptchaAnswer" />
-            </div>
+
             <div class="mb-3 d-grid gap-2">
                 <button type="submit" class="btn btn-primary">Register</button>
             </div>
@@ -109,24 +102,16 @@
         [Required(AllowEmptyStrings = false, ErrorMessage = "Podaj eMail")]
         public string? eMail { get; set; }
 
-        public string? CaptchaAnswer { get; set; }
-    }
-    // simple math captcha fields
-    private int CaptchaA { get; set; }
-    private int CaptchaB { get; set; }
 
-    private void GenerateCaptcha()
-    {
-        var rnd = new Random();
-        CaptchaA = rnd.Next(1, 10);
-        CaptchaB = rnd.Next(1, 10);
     }
+
+
+
 
     protected override void OnInitialized()
     {
         // keep OnInitialized lightweight; defer interactive-only work to OnAfterRenderAsync
         Console.WriteLine("OnInitialized called");
-        GenerateCaptcha();
     }
 
 
@@ -175,13 +160,6 @@
                 return;
             }
 
-            // captcha validation: ensure the user entered the correct sum
-            if (string.IsNullOrWhiteSpace(Model.CaptchaAnswer) || !int.TryParse(Model.CaptchaAnswer.Trim(), out var captchaValue) || captchaValue != (CaptchaA + CaptchaB))
-            {
-                ErrorMessage = "Captcha niepoprawne. Srubuj ponownie";
-                Console.WriteLine($"Captcha failed: entered='{Model.CaptchaAnswer ?? "(null)"}' expected='{CaptchaA + CaptchaB}'");
-                return;
-            }
 
 
             if (string.IsNullOrWhiteSpace(Model.UserName) || string.IsNullOrWhiteSpace(Model.Password) || string.IsNullOrWhiteSpace(Model.Password2) || string.IsNullOrWhiteSpace(Model.eMail))
@@ -231,7 +209,6 @@
         }
         finally
         {
-            GenerateCaptcha();
             StateHasChanged();
         }
 
