@@ -19,10 +19,28 @@
     </div>
 }
 
+@if (SelectedCount > 0)
+{
+    <div class="alert alert-info d-flex justify-content-between align-items-center mb-3" role="alert">
+        <span><strong>@SelectedCount</strong> event(s) selected</span>
+        <div class="d-flex gap-2">
+            <button class="btn btn-danger btn-sm" @onclick="PromptBulkDelete">
+                <i class="bi bi-trash"></i> Delete Selected (@SelectedCount)
+            </button>
+            <button class="btn btn-secondary btn-sm" @onclick="ClearSelection">
+                Clear Selection
+            </button>
+        </div>
+    </div>
+}
+
 <div class="table-responsive">
     <table class="table table-striped table-hover align-middle">
         <thead class="table-dark">
             <tr>
+                <th style="width:40px">
+                    <input type="checkbox" @bind="selectAll" @bind:after="ToggleSelectAll" title="Select all" />
+                </th>
                 <th style="width:60px">Id</th>
                 <th style="width:160px">Created</th>
                 <th>Title</th>
@@ -41,6 +59,9 @@
             @foreach (Event item in Events)
             {
                 <tr>
+                    <td>
+                        <input type="checkbox" @bind="selectedEventIds[item.Id]" />
+                    </td>
                     <td class="text-muted">@item.Id</td>
                     <td class="text-nowrap">@(item.CreationTimestamp.ToString("g"))</td>
 
@@ -59,7 +80,6 @@
                             <div class="d-flex gap-2">
                                 <button class="btn btn-sm btn-primary" @onclick="() => SaveAsync(item)">Save</button>
                                 <button class="btn btn-sm btn-secondary" @onclick="() => CancelEdit(item.Id)">Cancel</button>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => PromptRemoveEvent(item.Id, item.Title)">Remove</button>
                             </div>
                         </td>
                     }
@@ -104,7 +124,6 @@
                         <td>
                             <div class="d-flex gap-2">
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditedIds.Add(item.Id)">Edit</button>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => PromptRemoveEvent(item.Id, item.Title)">Remove</button>
                             </div>
                         </td>
                     }
@@ -118,33 +137,29 @@
     <button class="btn btn-primary" @onclick="AddNewEventAsync">Add new event</button>
 </div>
 
-@if (showDeleteEventDialog && pendingEventForDeletion is not null)
+@if (showBulkDeleteDialog)
 {
-    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1050;display:flex;align-items:center;justify-content:center;">
-        <div class="card" style="width:560px;max-width:95%;">
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1050;display:flex;align-items:center;justify-content:center;">
+        <div class="card" style="width:500px;max-width:95%;">
             <div class="card-body">
-                <h5 class="card-title">Confirm event deletion</h5>
-                <p class="card-text mb-2">You're about to permanently delete this event. Review all details:</p>
-                <table class="table table-sm mb-3">
-                    <tbody class="small">
-                        <tr><th scope="row" class="text-muted">Id</th><td>@pendingEventForDeletion.Id</td></tr>
-                        <tr><th scope="row" class="text-muted">Created</th><td>@pendingEventForDeletion.CreationTimestamp.ToString("g")</td></tr>
-                        <tr><th scope="row" class="text-muted">Title</th><td>@pendingEventForDeletion.Title</td></tr>
-                        <tr><th scope="row" class="text-muted">Description</th><td>@pendingEventForDeletion.Description</td></tr>
-                        <tr><th scope="row" class="text-muted">Event start</th><td>@pendingEventForDeletion.EventStartDate.ToString("g")</td></tr>
-                        <tr><th scope="row" class="text-muted">Event end</th><td>@pendingEventForDeletion.EventEndDate.ToString("g")</td></tr>
-                        <tr><th scope="row" class="text-muted">Enlisting start</th><td>@pendingEventForDeletion.EnlistingStartDate.ToString("g")</td></tr>
-                        <tr><th scope="row" class="text-muted">Enlisting end</th><td>@pendingEventForDeletion.EnlistingEndDate.ToString("g")</td></tr>
-                        <tr><th scope="row" class="text-muted">Searchable</th><td>@(pendingEventForDeletion.Searchable ? "Yes" : "No")</td></tr>
-                        <tr><th scope="row" class="text-muted">Anon enlist</th><td>@(pendingEventForDeletion.AllowedAnonymousEnlisting ? "Yes" : "No")</td></tr>
-                        <tr><th scope="row" class="text-muted">Anon streaming</th><td>@(pendingEventForDeletion.AllowAnonymousStreaming ? "Yes" : "No")</td></tr>
-                    </tbody>
-                </table>
-                <div class="mb-2"><small class="text-muted">Type the title <code>@deleteEventExpectedText</code> to confirm deletion.</small></div>
-                <input class="form-control mb-3" @bind="typedDeleteEventText" placeholder="Type title here" />
-                <div class="d-flex justify-content-end gap-2">
-                    <button class="btn btn-secondary" @onclick="CancelDeleteEvent">Cancel</button>
-                    <button class="btn btn-danger" disabled="@(typedDeleteEventText != deleteEventExpectedText)" @onclick="ConfirmDeleteEventAsync">Delete event</button>
+                <h5 class="card-title text-danger">Confirm Deletion</h5>
+                <p class="mb-2">
+                    You are about to permanently delete <strong>@SelectedCount event(s)</strong>.
+                </p>
+                <p class="mb-2">This will also delete:</p>
+                <ul class="mb-3">
+                    <li>All event organizers</li>
+                    <li>All event participants</li>
+                    <li>All event recordings (database records)</li>
+                    <li>All recording files from disk</li>
+                </ul>
+                <p class="text-danger"><strong>This action cannot be undone.</strong></p>
+                
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <button class="btn btn-secondary" @onclick="CancelBulkDelete">Cancel</button>
+                    <button class="btn btn-danger" @onclick="ConfirmBulkDeleteAsync">
+                        Delete @SelectedCount Event(s)
+                    </button>
                 </div>
             </div>
         </div>
@@ -157,6 +172,17 @@
     private string? StatusMessage { get; set; }
     private string StatusCssClass { get; set; } = "alert-info";
 
+    // Bulk selection state
+    private Dictionary<int, bool> selectedEventIds = new();
+    private bool selectAll = false;
+
+    // Computed properties
+    private int SelectedCount => selectedEventIds.Count(kvp => kvp.Value);
+    private List<int> GetSelectedEventIds() => selectedEventIds.Where(kvp => kvp.Value).Select(kvp => kvp.Key).ToList();
+
+    // Dialog state
+    private bool showBulkDeleteDialog = false;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadEventsAsync();
@@ -167,6 +193,15 @@
         // Use AsNoTracking to prevent auto-save behavior
         // Events will only be saved when SaveAsync is explicitly called
         Events = await Db.events.AsNoTracking().OrderBy(e => e.Id).ToListAsync();
+        
+        // Initialize selection state for new events
+        foreach (var evt in Events)
+        {
+            if (!selectedEventIds.ContainsKey(evt.Id))
+            {
+                selectedEventIds[evt.Id] = false;
+            }
+        }
     }
 
     private async Task AddNewEventAsync()
@@ -254,68 +289,70 @@
         _ = LoadEventsAsync();
     }
 
-    private async Task RemoveAsync(int id)
+    // Bulk selection methods
+    private void ToggleSelectAll()
+    {
+        foreach (var evt in Events)
+        {
+            selectedEventIds[evt.Id] = selectAll;
+        }
+    }
+
+    private void ClearSelection()
+    {
+        foreach (var key in selectedEventIds.Keys.ToList())
+        {
+            selectedEventIds[key] = false;
+        }
+        selectAll = false;
+    }
+
+    private void PromptBulkDelete()
+    {
+        if (SelectedCount == 0) return;
+        showBulkDeleteDialog = true;
+    }
+
+    private void CancelBulkDelete()
+    {
+        showBulkDeleteDialog = false;
+    }
+
+    private async Task ConfirmBulkDeleteAsync()
     {
         try
         {
-            var evt = await Db.events.FindAsync(id);
-            if (evt != null)
+            var idsToDelete = GetSelectedEventIds();
+            
+            if (idsToDelete.Count == 0)
             {
-                Db.events.Remove(evt);
-                await Db.SaveChangesAsync();
-                await LoadEventsAsync();
+                StatusMessage = "No events selected for deletion.";
+                StatusCssClass = "alert-warning";
+                return;
             }
+
+            await JS.InvokeVoidAsync("console.log", $"=== CLIENT: Bulk delete START === Deleting {idsToDelete.Count} event(s)");
+
+            var (successCount, failureCount, totalFiles, message) = 
+                await EventSvc.DeleteMultipleEventsWithCleanupAsync(idsToDelete);
+
+            await JS.InvokeVoidAsync("console.log", $"CLIENT: Bulk delete completed. Success: {successCount}, Failed: {failureCount}, Files: {totalFiles}");
+
+            showBulkDeleteDialog = false;
+            ClearSelection();
+            await LoadEventsAsync();
+
+            StatusMessage = message;
+            StatusCssClass = failureCount > 0 ? "alert-warning" : "alert-success";
+
+            await JS.InvokeVoidAsync("console.log", "=== CLIENT: Bulk delete END ===");
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex);
+            Console.WriteLine($"SERVER ERROR in ConfirmBulkDeleteAsync: {ex}");
+            StatusMessage = $"Error during bulk deletion: {ex.Message}";
+            StatusCssClass = "alert-danger";
+            await JS.InvokeVoidAsync("console.error", $"CLIENT ERROR in ConfirmBulkDeleteAsync: {ex.Message}");
         }
     }
-
-    // typed-confirmation flow for events
-    private bool showDeleteEventDialog = false;
-    private string? deleteEventExpectedText;
-    private int? deleteEventPendingId;
-    private string typedDeleteEventText = string.Empty;
-
-    private void PromptRemoveEvent(int id, string title)
-    {
-        deleteEventPendingId = id;
-        pendingEventForDeletion = Events.FirstOrDefault(e => e.Id == id);
-        deleteEventExpectedText = title ?? string.Empty;
-        typedDeleteEventText = string.Empty;
-        showDeleteEventDialog = true;
-    }
-
-    private void CancelDeleteEvent()
-    {
-        showDeleteEventDialog = false;
-        deleteEventPendingId = null;
-        deleteEventExpectedText = null;
-        typedDeleteEventText = string.Empty;
-        pendingEventForDeletion = null;
-    }
-
-    private async Task ConfirmDeleteEventAsync()
-    {
-        try
-        {
-            if (deleteEventPendingId.HasValue && !string.IsNullOrEmpty(deleteEventExpectedText) && typedDeleteEventText == deleteEventExpectedText)
-            {
-                var evt = await Db.events.FindAsync(deleteEventPendingId.Value);
-                if (evt != null)
-                {
-                    Db.events.Remove(evt);
-                    await Db.SaveChangesAsync();
-                    await LoadEventsAsync();
-                }
-            }
-        }
-        finally
-        {
-            CancelDeleteEvent();
-        }
-    }
-
-    private Event? pendingEventForDeletion;
 }

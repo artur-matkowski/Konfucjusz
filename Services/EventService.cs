@@ -318,4 +318,62 @@ public class EventService
             return (false, $"Error deleting event: {ex.Message}", 0);
         }
     }
+
+    /// <summary>
+    /// Delete multiple events with cleanup of recording files.
+    /// Processes each event individually and continues on errors to maximize deletion success.
+    /// </summary>
+    /// <param name="eventIds">Collection of event IDs to delete</param>
+    /// <param name="recordingsBasePath">Base path where recordings are stored (default: /app/recordings)</param>
+    /// <returns>Tuple containing success count, failure count, total deleted files, and summary message</returns>
+    public async Task<(int successCount, int failureCount, int totalDeletedFiles, string message)> 
+        DeleteMultipleEventsWithCleanupAsync(IEnumerable<int> eventIds, string recordingsBasePath = "/app/recordings")
+    {
+        _logger.LogInformation("=== DeleteMultipleEventsWithCleanupAsync START === Event IDs: [{EventIds}]", 
+            string.Join(", ", eventIds));
+
+        int successCount = 0;
+        int failureCount = 0;
+        int totalDeletedFiles = 0;
+        var failedEvents = new List<string>();
+
+        foreach (var eventId in eventIds)
+        {
+            var (success, message, deletedFiles) = await DeleteEventWithCleanupAsync(eventId, recordingsBasePath);
+            
+            if (success)
+            {
+                successCount++;
+                totalDeletedFiles += deletedFiles;
+                _logger.LogInformation("Successfully deleted event {EventId}", eventId);
+            }
+            else
+            {
+                failureCount++;
+                failedEvents.Add($"Event {eventId}: {message}");
+                _logger.LogWarning("Failed to delete event {EventId}: {Message}", eventId, message);
+            }
+        }
+
+        var summaryMessage = $"Bulk deletion completed: {successCount} event(s) deleted successfully";
+        
+        if (totalDeletedFiles > 0)
+        {
+            summaryMessage += $", {totalDeletedFiles} recording file(s) removed from disk";
+        }
+        
+        if (failureCount > 0)
+        {
+            summaryMessage += $". {failureCount} event(s) failed: {string.Join("; ", failedEvents)}";
+        }
+        else
+        {
+            summaryMessage += ".";
+        }
+
+        _logger.LogInformation("=== DeleteMultipleEventsWithCleanupAsync END === Success: {Success}, Failed: {Failed}, Files: {Files}", 
+            successCount, failureCount, totalDeletedFiles);
+
+        return (successCount, failureCount, totalDeletedFiles, summaryMessage);
+    }
 }
