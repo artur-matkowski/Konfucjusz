@@ -6,6 +6,7 @@
 @using MimeKit
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Identity
+@using Texnomic.Blazor.hCaptcha
 @inject ApplicationDbContext dbContext
 @inject Microsoft.AspNetCore.DataProtection.IDataProtectionProvider DataProtectionProvider
 @inject NavigationManager navigationManager
@@ -75,6 +76,11 @@
                 <InputText @bind-Value="Model.eMail" class="form-control" type="email" placeholder="Email" />
                 <ValidationMessage For="() => Model.eMail" />
             </div>
+            
+            <div class="mb-3">
+                <label>Weryfikacja anty-bot</label>
+                <HCaptcha Callback="hCaptchaCallback" Theme="Theme.Auto" />
+            </div>
 
             <div class="mb-3 d-grid gap-2">
                 <button type="submit" class="btn btn-primary">Register</button>
@@ -128,6 +134,11 @@
     private bool RegsitrationFormCorrect { get; set; } = false;
     private bool MailSendedCorrectly { get; set; } = false;
     private string? VerificationEmailStatus { get; set; }
+    
+    // hCaptcha validation
+    private bool IsCaptchaValid { get; set; } = false;
+    
+    protected void hCaptchaCallback(bool Result) => IsCaptchaValid = Result;
 
 
     private async Task RegisterUser()
