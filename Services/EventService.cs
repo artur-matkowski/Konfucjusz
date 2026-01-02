@@ -233,4 +233,89 @@ public class EventService
         _logger.LogInformation("=== EnsureSlugAsync END === Slug already exists: {Slug}", evt.Slug);
         return false;
     }
+
+    /// <summary>
+    /// Delete an event and all associated data including recordings, participants, and organizers.
+    /// This operation removes recording files from disk to free up space.
+    /// </summary>
+    /// <param name="eventId">ID of event to delete</param>
+    /// <param name="recordingsBasePath">Base path where recordings are stored (default: /app/recordings)</param>
+    /// <returns>Tuple containing success status, message, and count of deleted recording files</returns>
+    public async Task<(bool success, string message, int deletedRecordingFiles)> DeleteEventWithCleanupAsync(int eventId, string recordingsBasePath = "/app/recordings")
+    {
+        _logger.LogInformation("=== DeleteEventWithCleanupAsync START === Event ID: {EventId}", eventId);
+        
+        try
+        {
+            var evt = await _db.events.FindAsync(eventId);
+            if (evt == null)
+            {
+                _logger.LogWarning("Event not found: {EventId}", eventId);
+                return (false, "Event not found.", 0);
+            }
+
+            _logger.LogInformation("Deleting event: {Title} (ID: {EventId})", evt.Title, eventId);
+
+            // Get recordings before deletion to clean up files
+            var recordings = await _db.eventRecordings
+                .Where(r => r.EventId == eventId)
+                .ToListAsync();
+
+            _logger.LogInformation("Found {Count} recordings to delete", recordings.Count);
+
+            int deletedFiles = 0;
+            foreach (var recording in recordings)
+            {
+                try
+                {
+                    var filePath = Path.Combine(recordingsBasePath, recording.FileName);
+                    if (File.Exists(filePath))
+                    {
+                        var fileInfo = new FileInfo(filePath);
+                        var fileSizeMB = fileInfo.Length / (1024.0 * 1024.0);
+                        
+                        File.Delete(filePath);
+                        deletedFiles++;
+                        
+                        _logger.LogInformation("Deleted recording file: {FileName} ({Size:F2} MB)", 
+                            recording.FileName, fileSizeMB);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Recording file not found (already deleted?): {FileName}", 
+                            recording.FileName);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError("Failed to delete recording file {FileName}: {Error}", 
+                        recording.FileName, ex.Message);
+                }
+            }
+
+            // Get counts of related data
+            var organizersCount = await _db.eventOrganizers.CountAsync(eo => eo.EventId == eventId);
+            var participantsCount = await _db.eventParticipants.CountAsync(ep => ep.EventId == eventId);
+
+            _logger.LogInformation("Deleting {OrgCount} organizers, {PartCount} participants, {RecCount} recording records",
+                organizersCount, participantsCount, recordings.Count);
+
+            // Delete event (cascade will handle organizers, participants, recordings)
+            _db.events.Remove(evt);
+            await _db.SaveChangesAsync();
+
+            var message = $"Event '{evt.Title}' deleted successfully. " +
+                         $"Removed: {organizersCount} organizer(s), {participantsCount} participant(s), " +
+                         $"{recordings.Count} recording(s) ({deletedFiles} file(s) deleted from disk).";
+
+            _logger.LogInformation("=== DeleteEventWithCleanupAsync END === Success: {Message}", message);
+            return (true, message, deletedFiles);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("=== DeleteEventWithCleanupAsync ERROR === Event ID: {EventId}, Error: {Error}", 
+                eventId, ex.Message);
+            return (false, $"Error deleting event: {ex.Message}", 0);
+        }
+    }
 }

@@ -107,15 +107,6 @@
             <textarea class="form-control" rows="4" @bind="CurrentEvent.ConsentText" placeholder="Enter consent text or terms..."></textarea>
             <small class="form-text text-muted">This will be shown to anonymous users when they enlist.</small>
         </div>
-
-        <div class="mb-3">
-            <button type="button" class="btn btn-primary" @onclick="SaveEventAsync">Save Event</button>
-            <a href="/events" class="btn btn-secondary">Cancel</a>
-            @if (IsAdmin)
-            {
-                <button type="button" class="btn btn-outline-danger" @onclick="() => PromptDeleteEvent()">Delete Event</button>
-            }
-        </div>
     </form>
 
     <hr class="my-4" />
@@ -312,19 +303,49 @@
             }
         </tbody>
     </table>
+
+    <!-- Action Buttons at Bottom -->
+    <hr class="my-4" />
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-primary" @onclick="SaveEventAsync">Save Event</button>
+            <a href="/events" class="btn btn-secondary">Cancel</a>
+        </div>
+        @if (IsAdmin)
+        {
+            <button type="button" class="btn btn-danger" @onclick="() => PromptDeleteEvent()">
+                <i class="bi bi-trash"></i> Delete Event
+            </button>
+        }
+    </div>
 }
 
 @if (showDeleteDialog)
 {
     <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1050;display:flex;align-items:center;justify-content:center;">
-        <div class="card" style="width:520px;max-width:95%;">
+        <div class="card" style="width:600px;max-width:95%;">
             <div class="card-body">
-                <h5 class="card-title">Confirm event deletion</h5>
-                <p class="card-text">Type the event title <code>@CurrentEvent?.Title</code> to confirm deletion.</p>
-                <input class="form-control mb-3" @bind="typedDeleteText" placeholder="Type title here" />
+                <h5 class="card-title">⚠️ Confirm Event Deletion</h5>
+                <div class="alert alert-warning">
+                    <strong>Warning:</strong> This action is irreversible and will delete:
+                    <ul class="mb-0 mt-2">
+                        <li>All event organizers</li>
+                        <li>All participants and their data</li>
+                        <li>All audio recordings and files (freeing disk space)</li>
+                        <li>The event itself</li>
+                    </ul>
+                </div>
+                
+                <p class="card-text mb-2">
+                    Type the event title <code>@CurrentEvent?.Title</code> to confirm deletion:
+                </p>
+                <input class="form-control mb-3" @bind="typedDeleteText" placeholder="Type event title here" />
+                
                 <div class="d-flex justify-content-end gap-2">
                     <button class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
-                    <button class="btn btn-danger" disabled="@(typedDeleteText != CurrentEvent?.Title)" @onclick="ConfirmDeleteAsync">Delete event</button>
+                    <button class="btn btn-danger" disabled="@(typedDeleteText != CurrentEvent?.Title)" @onclick="ConfirmDeleteAsync">
+                        <i class="bi bi-trash"></i> Delete Event
+                    </button>
                 </div>
             </div>
         </div>
@@ -580,15 +601,24 @@ Automated notification.";
             if (CurrentEvent == null || typedDeleteText != CurrentEvent.Title)
                 return;
 
-            Db.events.Remove(CurrentEvent);
-            await Db.SaveChangesAsync();
-
-            Nav.NavigateTo("/events");
+            var (success, message, deletedFiles) = await EventSvc.DeleteEventWithCleanupAsync(CurrentEvent.Id);
+            
+            if (success)
+            {
+                // Navigate to events list after successful deletion
+                Nav.NavigateTo("/events");
+            }
+            else
+            {
+                StatusMessage = message;
+                StatusCss = "alert-danger";
+                showDeleteDialog = false;
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine(ex);
-            StatusMessage = "Error deleting event.";
+            StatusMessage = $"Error deleting event: {ex.Message}";
             StatusCss = "alert-danger";
             showDeleteDialog = false;
         }
