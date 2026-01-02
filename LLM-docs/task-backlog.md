@@ -18,6 +18,27 @@
 ## Backlog (Planned)
 
 ### Next Sprint Candidates
+- [ ] **Debug 'Start Recording' permission error** - Fix "You have no permission to access that" error when clicking "Start Recording" button. (Est: 1 session)
+  - Status: reported by user
+  - Files: Likely `Components/Pages/Events/StreamBroadcast.razor`, `Hubs/AudioStreamHub.cs`
+  - Issue: Permission check failing or authorization not configured correctly
+  
+- [ ] **Add stream link pre-availability** - Make stream link available before the stream starts, not just during broadcast. (Est: 1 session)
+  - Status: reported by user
+  - Files: Likely `Components/Pages/Events/EventEdit.razor`, `Components/Pages/Events/StreamListen.razor`
+  - Enhancement: Users should be able to share/access stream link before event begins
+  
+- [ ] **Fix 'Enlist Now' button functionality** - Clicking "Enlist Now" button does not do anything. (Est: 1 session)
+  - Status: reported by user
+  - Files: Likely `Components/Pages/Events/Enlist.razor`, `Services/ParticipantService.cs`
+  - Issue: Button click not triggering enlistment or missing event handler
+  
+- [ ] **Add QR codes for enlist and stream links** - Generate QR codes for easy mobile access to enlistment and streaming pages. (Est: 1-2 sessions)
+  - Status: requested by user
+  - Files: `Components/Pages/Events/EventEdit.razor` (enlist link section), stream link display areas
+  - Dependencies: QR code generation library (e.g., QRCoder, ZXing.Net)
+  - Enhancement: Display QR codes alongside URLs for easy scanning
+
 - [ ] **Audit registration/login flows** - Ensure no backdoor-like endpoints are enabled in production.
 
 ### Future Considerations
