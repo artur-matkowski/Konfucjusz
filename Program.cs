@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text;
+using Texnomic.Blazor.hCaptcha.Extensions;
 
 
 
@@ -36,6 +37,14 @@ builder.Services.AddScoped<ParticipantService>(sp =>
 // Bind SMTP settings and register EmailRequest for DI. Put real secrets in user-secrets or environment variables.
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
 builder.Services.AddScoped<EmailRequest>();
+
+// Add hCaptcha services with configuration from environment variables
+builder.Services.AddHttpClient();
+builder.Services.AddHCaptcha(options =>
+{
+    options.SiteKey = builder.Configuration["Captcha__hCaptcha__SiteKey"] ?? throw new InvalidOperationException("Missing hCaptcha SiteKey configuration");
+    options.Secret = builder.Configuration["Captcha__hCaptcha__Secret"] ?? throw new InvalidOperationException("Missing hCaptcha Secret configuration");
+});
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(opt =>
