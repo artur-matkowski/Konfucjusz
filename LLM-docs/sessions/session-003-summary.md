@@ -1,8 +1,8 @@
-# Session 003 Summary - Authentication Claims Issues Fixed
+# Session 003 Summary - Authentication Claims Issues Fixed + "My Events" Page
 
 **Date:** 2026-01-03  
 **Agent:** tdd-developer  
-**Status:** Completed Successfully
+**Status:** Completed Successfully + Extended
 
 ---
 
@@ -437,11 +437,44 @@ This would make the codebase more compatible with standard ASP.NET Identity patt
 
 ## Next Steps
 
+### Session Extension: "My Events" Page (✅ COMPLETED)
+
+After fixing the authentication issues, user requested to continue with creating a participant-facing page.
+
+**Problem Identified:**
+- Regular users (with "User" role) had no way to view events they're participating in
+- No navigation menu for participants to find their events
+- No way to access stream links for enrolled events
+
+**Solution Implemented:**
+Created `Components/Pages/Events/MyParticipations.razor` with:
+- Event cards showing all enrolled events (Confirmed, Waitlisted, Pending)
+- Status badges with color coding
+- "Join Stream" button for active events
+- "View Recordings" button for past events
+- "Cancel Participation" functionality with confirmation modal
+- Comprehensive logging using `[MyParticipations]` prefix
+- Route: `@page "/my-events"`
+
+**Files Modified:**
+- ✅ Created `Components/Pages/Events/MyParticipations.razor` (new file, ~380 lines)
+- ✅ Modified `Components/Layout/NavMenu.razor` - Added "My Events" navigation item for all authenticated users
+
+**Deployment:**
+- ✅ Build successful (dotnet build)
+- ✅ Docker image created
+- ✅ Container deployed and running
+
 ### Immediate Testing (Recommended)
 1. ✅ Test stream broadcast as Organizer (FIXED)
 2. ✅ Test event enlistment as regular User (FIXED)
-3. ⏳ Test from event edit page - verify participants appear in list
-4. ⏳ Monitor Docker logs for any remaining issues
+3. ✅ Test "My Events" page creation (DEPLOYED - NEEDS USER TESTING)
+4. ⏳ Login as User and navigate to "My Events" page
+5. ⏳ Verify enrolled events display correctly
+6. ⏳ Test "Join Stream" button navigation
+7. ⏳ Test "View Recordings" button navigation
+8. ⏳ Test "Cancel Participation" functionality
+9. ⏳ Monitor Docker logs for any issues: `docker logs konfucjusz_app --tail 100`
 
 ### Future Improvements (Optional)
 1. **Standardize claims:** Add Email and NameIdentifier claims to auth system
