@@ -132,18 +132,44 @@ Stream link is only available during active broadcast, not before the event star
 
 ---
 
-## Issue 3: 'Enlist Now' Button Does Nothing
+## Issue 3: 'Enlist Now' Button Does Nothing (RESOLVED - 2026-01-03)
 
 ### Description
-When clicking "Enlist Now" button, nothing happens - no feedback, no enlistment.
+When clicking "Enlist Now" button as a logged-in user, nothing happens - no feedback, no enlistment.
+
+### Resolution
+**Root Causes:** 
+1. **User ID extraction failure** - Code tried to read `ClaimTypes.NameIdentifier` and `ClaimTypes.Email` which don't exist in our auth system
+2. **Incorrect parameter order** - Service call had eventId and userId parameters swapped
+
+**Changes Made:**
+1. **Enlist.razor** - Enhanced user ID resolution (lines 294-321):
+   - Now looks up user from database using email from Name claim
+   - Tries multiple claim types for compatibility
+   - Added comprehensive logging to diagnose issues
+   - Logs all claims if email not found
+
+2. **Enlist.razor** - Fixed parameter order (line 410):
+   - **Before:** `EnlistLoggedInUserAsync(currentUserId.Value, eventData.Id, eventData)` ❌
+   - **After:** `EnlistLoggedInUserAsync(eventData.Id, currentUserId.Value, eventData)` ✅
+   - Method signature expects: `(int eventId, int userId, Event eventDetails)`
+
+3. **EnlistLoggedInUser method** - Added detailed logging:
+   - Logs when method is called
+   - Logs user ID and event ID being processed
+   - Logs ParticipantService results
+   - Logs exceptions with full stack traces
+
+**Files Modified:**
+- `Components/Pages/Events/Enlist.razor` - Lines 1-10 (added using), 294-321 (user ID resolution), 365-399 (logging), 410 (parameter order fix)
 
 ### Expected Behavior
-- Button click should enlist user in the event
-- Success message should appear
-- User should be redirected or see confirmation
-- Participant should appear in event participants list
+- ✅ Logged-in users can now enlist by clicking "Enlist Now"
+- ✅ Success message appears after enlistment
+- ✅ User appears in event participants list (organizer view)
+- ✅ Comprehensive logging helps diagnose any remaining issues
 
-### Investigation Starting Points
+### Investigation Starting Points (for reference)
 
 **Files to Check:**
 - `Components/Pages/Events/Enlist.razor` - Enlistment page with button

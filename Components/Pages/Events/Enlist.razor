@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
 @inject ApplicationDbContext DbContext
 @inject ParticipantService ParticipantService
 @inject EmailRequest EmailService
@@ -293,12 +294,39 @@ else
 
         if (isAuthenticated)
         {
-            var userIdClaim = user!.FindFirst(ClaimTypes.NameIdentifier);
-            var emailClaim = user.FindFirst(ClaimTypes.Email);
-            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out var uid))
+            Console.WriteLine("[Enlist] User is authenticated, resolving user ID...");
+            
+            // Try to get email from various claim types (our auth system stores it in Name claim)
+            var emailClaim = user!.FindFirst(ClaimTypes.Email) 
+                          ?? user.FindFirst("email") 
+                          ?? user.FindFirst("preferred_username")
+                          ?? user.FindFirst(ClaimTypes.Name); // Email is in Name claim
+            
+            if (emailClaim != null)
             {
-                currentUserId = uid;
-                currentUserEmail = emailClaim?.Value;
+                currentUserEmail = emailClaim.Value;
+                Console.WriteLine($"[Enlist] Email found in claim: {currentUserEmail} (type: {emailClaim.Type})");
+                
+                // Look up user ID from database
+                var userAccount = await DbContext.users.FirstOrDefaultAsync(u => u.userEmail == currentUserEmail);
+                if (userAccount != null)
+                {
+                    currentUserId = userAccount.Id;
+                    Console.WriteLine($"[Enlist] User ID resolved: {currentUserId}");
+                }
+                else
+                {
+                    Console.WriteLine($"[Enlist] ERROR: No user found in database with email: {currentUserEmail}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("[Enlist] ERROR: No email claim found in user principal");
+                // Log all available claims for debugging
+                foreach (var claim in user.Claims)
+                {
+                    Console.WriteLine($"[Enlist] Available claim: {claim.Type} = {claim.Value}");
+                }
             }
         }
 
@@ -364,7 +392,13 @@ else
 
     private async Task EnlistLoggedInUser()
     {
-        if (currentUserId == null || eventData == null) return;
+        Console.WriteLine($"[Enlist] EnlistLoggedInUser called - currentUserId: {currentUserId}, eventData: {eventData?.Id}");
+        
+        if (currentUserId == null || eventData == null)
+        {
+            Console.WriteLine("[Enlist] ERROR: currentUserId or eventData is null, exiting");
+            return;
+        }
 
         submitting = true;
         errorMessage = null;
@@ -372,7 +406,10 @@ else
 
         try
         {
-            var result = await ParticipantService.EnlistLoggedInUserAsync(currentUserId.Value, eventData.Id, eventData);
+            Console.WriteLine($"[Enlist] Calling ParticipantService.EnlistLoggedInUserAsync for user {currentUserId} in event {eventData.Id}");
+            var result = await ParticipantService.EnlistLoggedInUserAsync(eventData.Id, currentUserId.Value, eventData);
+            Console.WriteLine($"[Enlist] EnlistLoggedInUserAsync returned - Success: {result.Success}, Message: {result.Message}");
+            
             if (result.Success)
             {
                 successMessage = result.Participant?.Status == ParticipantStatus.Waitlisted
@@ -382,15 +419,19 @@ else
                     : "You're successfully enlisted!";
                 alreadyEnlisted = true;
                 currentParticipant = result.Participant;
+                Console.WriteLine($"[Enlist] Enlistment successful: {successMessage}");
             }
             else
             {
                 errorMessage = result.Message ?? "Could not enlist. Please try again.";
+                Console.WriteLine($"[Enlist] Enlistment failed: {errorMessage}");
             }
         }
         catch (Exception ex)
         {
             errorMessage = $"An error occurred: {ex.Message}";
+            Console.WriteLine($"[Enlist] Exception in EnlistLoggedInUser: {ex.Message}");
+            Console.WriteLine($"[Enlist] Stack trace: {ex.StackTrace}");
         }
         finally
         {

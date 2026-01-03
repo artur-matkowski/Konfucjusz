@@ -23,11 +23,6 @@
   - Files: Likely `Components/Pages/Events/EventEdit.razor`, `Components/Pages/Events/StreamListen.razor`
   - Enhancement: Users should be able to share/access stream link before event begins
   
-- [ ] **Fix 'Enlist Now' button functionality** - Clicking "Enlist Now" button does not do anything. (Est: 1 session)
-  - Status: reported by user
-  - Files: Likely `Components/Pages/Events/Enlist.razor`, `Services/ParticipantService.cs`
-  - Issue: Button click not triggering enlistment or missing event handler
-  
 - [ ] **Add QR codes for enlist and stream links** - Generate QR codes for easy mobile access to enlistment and streaming pages. (Est: 1-2 sessions)
   - Status: requested by user
   - Files: `Components/Pages/Events/EventEdit.razor` (enlist link section), stream link display areas
@@ -40,8 +35,12 @@
 - [ ] **Azure-ready deployment** - Plan container deployment and secret management for Azure.
 
 ## Completed (Last Sprint)
+- [x] **Fix 'Enlist Now' button functionality** - Fixed button not working for logged-in users (2026-01-03)
+  - Enhanced user ID extraction to use Name claim (email stored there)
+  - Added comprehensive logging throughout enlistment flow
+  - Files: Components/Pages/Events/Enlist.razor
 - [x] **Fix stream broadcast permission error** - Fixed "You do not have permission to manage this event" error for Organizers (2026-01-03)
-  - Enhanced user ID extraction to support multiple claim types (ClaimTypes.Email, email, preferred_username)
+  - Enhanced user ID extraction to support multiple claim types (ClaimTypes.Email, email, preferred_username, Name)
   - Added comprehensive logging to StreamBroadcast.razor for diagnosing permission issues
   - Added authorization check to AudioStreamHub.StartRecording method (defense-in-depth)
   - Files: Components/Pages/Events/StreamBroadcast.razor, Hubs/AudioStreamHub.cs
