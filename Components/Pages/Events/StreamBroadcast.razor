@@ -179,13 +179,37 @@
         var user = authState.User;
         IsAdmin = user.IsInRole("Administrator");
 
-        var emailClaim = user.FindFirst(c => c.Type == System.Security.Claims.ClaimTypes.Email);
+        Console.WriteLine($"[StreamBroadcast] User authenticated: {user.Identity?.IsAuthenticated}, IsAdmin: {IsAdmin}");
+        Console.WriteLine($"[StreamBroadcast] User identity name: {user.Identity?.Name}");
+        
+        // Try multiple claim types to find email address
+        // Note: In our authentication system, the email is stored in the Name claim
+        var emailClaim = user.FindFirst(c => c.Type == System.Security.Claims.ClaimTypes.Email) 
+                      ?? user.FindFirst("email") 
+                      ?? user.FindFirst("preferred_username")
+                      ?? user.FindFirst(System.Security.Claims.ClaimTypes.Name); // Check Name claim as fallback
+        
         if (emailClaim != null)
         {
+            Console.WriteLine($"[StreamBroadcast] Email claim found: {emailClaim.Value} (type: {emailClaim.Type})");
             var currentUser = await Db.users.FirstOrDefaultAsync(u => u.userEmail == emailClaim.Value);
             if (currentUser != null)
             {
                 CurrentUserId = currentUser.Id;
+                Console.WriteLine($"[StreamBroadcast] User ID resolved: {CurrentUserId}");
+            }
+            else
+            {
+                Console.WriteLine($"[StreamBroadcast] ERROR: No user found in database with email: {emailClaim.Value}");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"[StreamBroadcast] ERROR: No email claim found in user principal");
+            // Log all available claims for debugging
+            foreach (var claim in user.Claims)
+            {
+                Console.WriteLine($"[StreamBroadcast] Available claim: {claim.Type} = {claim.Value}");
             }
         }
 
@@ -202,20 +226,41 @@
         {
             StatusMessage = "Event not found.";
             StatusCss = "alert-danger";
+            Console.WriteLine($"[StreamBroadcast] Event not found: {EventId}");
             return;
         }
+
+        Console.WriteLine($"[StreamBroadcast] Event loaded: {CurrentEvent.Title} (ID: {EventId})");
 
         // Check permission
         if (IsAdmin)
         {
             CanManageEvent = true;
+            Console.WriteLine($"[StreamBroadcast] Permission granted: User is Administrator");
         }
         else
         {
+            Console.WriteLine($"[StreamBroadcast] Checking organizer status for UserId={CurrentUserId}, EventId={EventId}");
             var isOrganizer = await Db.eventOrganizers
                 .AnyAsync(eo => eo.EventId == EventId && eo.UserId == CurrentUserId);
             CanManageEvent = isOrganizer;
+            Console.WriteLine($"[StreamBroadcast] IsOrganizer check result: {isOrganizer}");
+            
+            if (!isOrganizer)
+            {
+                // Log all organizers for this event to help debug
+                var organizers = await Db.eventOrganizers
+                    .Where(eo => eo.EventId == EventId)
+                    .ToListAsync();
+                Console.WriteLine($"[StreamBroadcast] Event has {organizers.Count} organizer(s):");
+                foreach (var org in organizers)
+                {
+                    Console.WriteLine($"[StreamBroadcast]   - UserId: {org.UserId}");
+                }
+            }
         }
+        
+        Console.WriteLine($"[StreamBroadcast] Final CanManageEvent: {CanManageEvent}");
     }
 
     private async Task StartStreamingAsync()

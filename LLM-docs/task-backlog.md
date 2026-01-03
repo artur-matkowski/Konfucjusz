@@ -18,11 +18,6 @@
 ## Backlog (Planned)
 
 ### Next Sprint Candidates
-- [ ] **Debug 'Start Recording' permission error** - Fix "You have no permission to access that" error when clicking "Start Recording" button. (Est: 1 session)
-  - Status: reported by user
-  - Files: Likely `Components/Pages/Events/StreamBroadcast.razor`, `Hubs/AudioStreamHub.cs`
-  - Issue: Permission check failing or authorization not configured correctly
-  
 - [ ] **Add stream link pre-availability** - Make stream link available before the stream starts, not just during broadcast. (Est: 1 session)
   - Status: reported by user
   - Files: Likely `Components/Pages/Events/EventEdit.razor`, `Components/Pages/Events/StreamListen.razor`
@@ -45,6 +40,11 @@
 - [ ] **Azure-ready deployment** - Plan container deployment and secret management for Azure.
 
 ## Completed (Last Sprint)
+- [x] **Fix stream broadcast permission error** - Fixed "You do not have permission to manage this event" error for Organizers (2026-01-03)
+  - Enhanced user ID extraction to support multiple claim types (ClaimTypes.Email, email, preferred_username)
+  - Added comprehensive logging to StreamBroadcast.razor for diagnosing permission issues
+  - Added authorization check to AudioStreamHub.StartRecording method (defense-in-depth)
+  - Files: Components/Pages/Events/StreamBroadcast.razor, Hubs/AudioStreamHub.cs
 - [x] **Administrator bulk event deletion** - Added checkbox selection and simple confirmation for efficient bulk deletion (2026-01-02)
   - Implemented DeleteMultipleEventsWithCleanupAsync in EventService
   - Added checkbox column and selection toolbar to EventManagement
