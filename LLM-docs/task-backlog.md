@@ -35,8 +35,15 @@
 - [ ] **Azure-ready deployment** - Plan container deployment and secret management for Azure.
 
 ## Completed (Last Sprint)
+- [x] **Create "My Events" page for participants** - Added dedicated page for users to view and access their enrolled events (2026-01-03)
+  - Created MyParticipations.razor with event cards, status badges, and stream/recording access
+  - Added navigation menu item for all authenticated users
+  - Implemented cancel participation with confirmation modal
+  - Added comprehensive logging using [MyParticipations] prefix
+  - Files: Components/Pages/Events/MyParticipations.razor, Components/Layout/NavMenu.razor
 - [x] **Fix 'Enlist Now' button functionality** - Fixed button not working for logged-in users (2026-01-03)
   - Enhanced user ID extraction to use Name claim (email stored there)
+  - Fixed parameter order bug in service call (eventId and userId were swapped)
   - Added comprehensive logging throughout enlistment flow
   - Files: Components/Pages/Events/Enlist.razor
 - [x] **Fix stream broadcast permission error** - Fixed "You do not have permission to manage this event" error for Organizers (2026-01-03)
