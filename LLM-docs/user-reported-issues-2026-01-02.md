@@ -5,17 +5,38 @@
 
 ---
 
-## Issue 1: 'Start Recording' Permission Error
+## Issue 1: Stream Broadcast Permission Error (RESOLVED - 2026-01-03)
 
 ### Description
-When clicking "Start Recording" button, user receives error message:
-> "You have no permission to access that"
+When Organizers try to start a stream broadcast for an event, they receive error:
+> "You do not have permission to manage this event."
 
-### Expected Behavior
-- Authorized users (Organizers, Administrators) should be able to start recording during stream broadcast
-- Recording should begin without permission errors
+This blocks the entire streaming workflow, not just recording.
 
-### Investigation Starting Points
+### Resolution
+**Root Cause:** The permission check in `StreamBroadcast.razor` was failing because:
+1. User ID extraction only checked one claim type (`ClaimTypes.Email`)
+2. If email claim was not found, `CurrentUserId` remained at default value `0`
+3. This caused the organizer check to always fail
+
+**Changes Made:**
+1. **StreamBroadcast.razor** - Enhanced user ID extraction:
+   - Now tries multiple claim types: `ClaimTypes.Email`, `email`, `preferred_username`
+   - Added comprehensive logging to diagnose permission issues
+   - Logs all claims if email claim not found
+   - Logs all event organizers when permission check fails
+
+2. **AudioStreamHub.cs** - Added authorization to `StartRecording` method:
+   - Validates user authentication before starting recording
+   - Checks if user is Administrator or assigned Organizer
+   - Uses same multi-claim-type resolution as StreamBroadcast
+   - Returns `false` if permission denied (defense-in-depth)
+
+**Files Modified:**
+- `Components/Pages/Events/StreamBroadcast.razor` - Lines 176-219
+- `Hubs/AudioStreamHub.cs` - Lines 209-276
+
+### Investigation Starting Points (for reference)
 
 **Files to Check:**
 - `Components/Pages/Events/StreamBroadcast.razor` - Button click handler

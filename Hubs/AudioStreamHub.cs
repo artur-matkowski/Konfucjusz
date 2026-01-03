@@ -206,15 +206,89 @@ public class AudioStreamHub : Hub
         return "Guest";
     }
 
-    // Start server-side recording (must be organizer validated externally)
-    public bool StartRecording(int eventId)
+    /// <summary>
+    /// Start server-side recording for an event.
+    /// Only administrators and assigned organizers can start recordings.
+    /// </summary>
+    /// <param name="eventId">ID of the event to record</param>
+    /// <returns>True if recording started successfully, false if already recording or permission denied</returns>
+    public async Task<bool> StartRecording(int eventId)
     {
-        Console.WriteLine($"[AudioStreamHub] StartRecording called for event {eventId}");
+        Console.WriteLine($"[AudioStreamHub] StartRecording called for event {eventId} by connection {Context.ConnectionId}");
+        
+        // Check authorization
+        var user = Context.User;
+        var isAuthenticated = user?.Identity?.IsAuthenticated == true;
+        
+        if (!isAuthenticated)
+        {
+            Console.WriteLine($"[AudioStreamHub] StartRecording denied: User not authenticated");
+            return false;
+        }
+        
+        var isAdmin = user!.IsInRole("Administrator");
+        Console.WriteLine($"[AudioStreamHub] User is Administrator: {isAdmin}");
+        
+        if (!isAdmin)
+        {
+            // Check if user is an organizer for this event
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            
+            // Try to get user ID from claims
+            // Note: In our authentication system, the email is stored in the Name claim
+            int? userId = null;
+            var emailClaim = user.FindFirst(c => c.Type == System.Security.Claims.ClaimTypes.Email) 
+                          ?? user.FindFirst("email") 
+                          ?? user.FindFirst("preferred_username")
+                          ?? user.FindFirst(System.Security.Claims.ClaimTypes.Name); // Check Name claim as fallback
+            
+            if (emailClaim != null)
+            {
+                Console.WriteLine($"[AudioStreamHub] Found email claim: {emailClaim.Value} (type: {emailClaim.Type})");
+                var currentUser = await db.users.FirstOrDefaultAsync(u => u.userEmail == emailClaim.Value);
+                if (currentUser != null)
+                {
+                    userId = currentUser.Id;
+                    Console.WriteLine($"[AudioStreamHub] Resolved user ID: {userId}");
+                }
+                else
+                {
+                    Console.WriteLine($"[AudioStreamHub] ERROR: No user found in database with email: {emailClaim.Value}");
+                }
+            }
+            
+            if (!userId.HasValue)
+            {
+                Console.WriteLine($"[AudioStreamHub] StartRecording denied: Could not resolve user ID from claims");
+                // Log all available claims for debugging
+                foreach (var claim in user.Claims)
+                {
+                    Console.WriteLine($"[AudioStreamHub] Available claim: {claim.Type} = {claim.Value}");
+                }
+                return false;
+            }
+            
+            var isOrganizer = await db.eventOrganizers
+                .AnyAsync(eo => eo.EventId == eventId && eo.UserId == userId.Value);
+            
+            Console.WriteLine($"[AudioStreamHub] User {userId} is organizer for event {eventId}: {isOrganizer}");
+            
+            if (!isOrganizer)
+            {
+                Console.WriteLine($"[AudioStreamHub] StartRecording denied: User is not an organizer");
+                return false;
+            }
+        }
+        
+        // Check if already recording
         if (ActiveRecordings.ContainsKey(eventId))
         {
             Console.WriteLine($"[AudioStreamHub] Recording already active for event {eventId}");
             return false; // already recording
         }
+        
+        // Start recording
         var fileName = $"event-{eventId}-{DateTime.UtcNow:yyyyMMddHHmmss}.wav";
         var path = Path.Combine("wwwroot", "recordings");
         Directory.CreateDirectory(path);
@@ -222,7 +296,7 @@ public class AudioStreamHub : Hub
         Console.WriteLine($"[AudioStreamHub] Creating recording file: {fullPath}");
         var writer = new RecordingWriter(fullPath, 44100, 1);
         ActiveRecordings[eventId] = writer;
-        Console.WriteLine($"[AudioStreamHub] Recording started for event {eventId}");
+        Console.WriteLine($"[AudioStreamHub] Recording started successfully for event {eventId}");
         return true;
     }
 
