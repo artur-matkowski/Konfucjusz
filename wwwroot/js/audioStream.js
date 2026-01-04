@@ -11,7 +11,8 @@ window.konfAudio = (function(){
         sampleRate: 44100,
         eventId: null,
         slug: null,
-        token: null
+        token: null,
+        dotNetRef: null
     };
 
     let broadcast = {
@@ -83,9 +84,13 @@ window.konfAudio = (function(){
     }
 
     return {
-        startListening: async function(hubUrl, eventId, slug, token) {
+        startListening: async function(hubUrl, eventId, slug, token, dotNetRef) {
             console.log(`[startListening] Starting for event ${eventId}, slug: ${slug}, token: ${token}`);
+            console.log(`[startListening] dotNetRef parameter received:`, dotNetRef);
+            console.log(`[startListening] dotNetRef type:`, typeof dotNetRef);
             listen.eventId = eventId; listen.slug = slug; listen.token = token || null;
+            listen.dotNetRef = dotNetRef || null;
+            console.log(`[startListening] Stored dotNetRef in listen object:`, listen.dotNetRef);
             ensureAudioContext(listen);
             
             // Resume AudioContext if suspended (required by browser autoplay policies)
@@ -130,6 +135,41 @@ window.konfAudio = (function(){
                 }
             });
             
+            // Handle stream lifecycle events
+            listen.connection.on("StreamStarted", () => {
+                console.log('[StreamStarted] Event received - Stream has begun');
+                console.log('[StreamStarted] dotNetRef exists:', !!listen.dotNetRef);
+                if (listen.dotNetRef) {
+                    console.log('[StreamStarted] Calling dotNetRef.invokeMethodAsync with state: active');
+                    listen.dotNetRef.invokeMethodAsync('OnStreamStateChanged', 'active')
+                        .then(() => {
+                            console.log('[StreamStarted] Successfully invoked OnStreamStateChanged');
+                        })
+                        .catch(err => {
+                            console.error('[StreamStarted] ERROR invoking OnStreamStateChanged:', err);
+                        });
+                } else {
+                    console.error('[StreamStarted] ERROR: dotNetRef is null or undefined!');
+                }
+            });
+            
+            listen.connection.on("StreamEnded", () => {
+                console.log('[StreamEnded] Event received - Stream has finished');
+                console.log('[StreamEnded] dotNetRef exists:', !!listen.dotNetRef);
+                if (listen.dotNetRef) {
+                    console.log('[StreamEnded] Calling dotNetRef.invokeMethodAsync with state: ended');
+                    listen.dotNetRef.invokeMethodAsync('OnStreamStateChanged', 'ended')
+                        .then(() => {
+                            console.log('[StreamEnded] Successfully invoked OnStreamStateChanged');
+                        })
+                        .catch(err => {
+                            console.error('[StreamEnded] ERROR invoking OnStreamStateChanged:', err);
+                        });
+                } else {
+                    console.error('[StreamEnded] ERROR: dotNetRef is null or undefined!');
+                }
+            });
+            
             console.log('[startListening] Starting SignalR connection...');
             await listen.connection.start();
             console.log('[startListening] SignalR connected, calling JoinListener...');
@@ -153,6 +193,7 @@ window.konfAudio = (function(){
             listen.connection = null;
             listen.queue = [];
             listen.playing = false;
+            listen.dotNetRef = null;
         },
         startBroadcast: async function(hubUrl, eventId) {
             try {

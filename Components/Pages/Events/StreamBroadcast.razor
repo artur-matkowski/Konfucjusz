@@ -281,6 +281,11 @@
             await JS.InvokeVoidAsync("konfAudio.startBroadcast", "/hubs/audio", CurrentEvent.Id);
             Console.WriteLine("[StreamBroadcast] Broadcast started");
             
+            // Notify all listeners that stream has started
+            Console.WriteLine("[StreamBroadcast] Notifying listeners that stream started...");
+            await JS.InvokeVoidAsync("konfAudio.invoke", "/hubs/audio", "NotifyStreamStarted", CurrentEvent.Id);
+            Console.WriteLine("[StreamBroadcast] Stream start notification sent");
+            
             // Automatically start recording
             Console.WriteLine("[StreamBroadcast] Waiting 500ms before starting recording...");
             await Task.Delay(500); // Give broadcast time to initialize
@@ -312,6 +317,21 @@
     {
         try
         {
+            // Notify listeners that stream is ending
+            if (CurrentEvent != null)
+            {
+                try
+                {
+                    Console.WriteLine("[StreamBroadcast] Notifying listeners that stream ended...");
+                    await JS.InvokeVoidAsync("konfAudio.invoke", "/hubs/audio", "NotifyStreamEnded", CurrentEvent.Id);
+                    Console.WriteLine("[StreamBroadcast] Stream end notification sent");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[StreamBroadcast] Error notifying stream end: {ex.Message}");
+                }
+            }
+            
             // Stop recording first if active (while connection is still alive)
             if (IsRecording)
             {
