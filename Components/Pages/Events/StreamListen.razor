@@ -1,10 +1,12 @@
 @page "/e/{Slug}/stream"
 @rendermode InteractiveServer
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
 @inject ApplicationDbContext Db
 @inject ParticipantService ParticipantSvc
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <h3>Live Audio Stream</h3>
 
@@ -31,6 +33,12 @@ else
     {
         <div class="alert alert-success p-2">Connected. Audio should begin shortly. Keep this tab active.</div>
         <button class="btn btn-outline-secondary" @onclick="LeaveStreamAsync">Leave Stream</button>
+        
+        <div class="mt-2">
+            <small class="text-muted">Debug:</small>
+            <button class="btn btn-sm btn-outline-info" @onclick='() => TestStateChange("active")'>Test Active</button>
+            <button class="btn btn-sm btn-outline-warning" @onclick='() => TestStateChange("ended")'>Test Ended</button>
+        </div>
     }
 
     <div class="mt-4">
@@ -55,27 +63,38 @@ else
     private bool Joined = false;
     private bool JoinInProgress = false;
     private string StatusMessage = "Idle";
+    private DotNetObjectReference<StreamListen>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
     {
+        Console.WriteLine($"[StreamListen] OnInitializedAsync called for slug: {Slug}");
         EventEntity = await Db.events.FirstOrDefaultAsync(e => e.Slug == Slug);
         Loading = false;
+        _dotNetRef = DotNetObjectReference.Create(this);
+        Console.WriteLine($"[StreamListen] DotNetObjectReference created: {_dotNetRef != null}");
     }
 
     private async Task JoinStreamAsync()
     {
         if (EventEntity == null) return;
+        Console.WriteLine($"[StreamListen] JoinStreamAsync called for event {EventEntity.Id}");
         JoinInProgress = true;
         StatusMessage = "Connecting...";
+        StateHasChanged();
         try
         {
-            await JS.InvokeVoidAsync("konfAudio.startListening", "/hubs/audio", EventEntity.Id, EventEntity.Slug, Token);
+            Console.WriteLine($"[StreamListen] Calling JS startListening with dotNetRef: {_dotNetRef != null}");
+            await JS.InvokeVoidAsync("konfAudio.startListening", "/hubs/audio", EventEntity.Id, EventEntity.Slug, Token, _dotNetRef);
             Joined = true;
-            StatusMessage = "Listening";
+            StatusMessage = "Connected - Stream will begin shortly";
+            Console.WriteLine($"[StreamListen] Successfully joined stream, status: {StatusMessage}");
+            StateHasChanged();
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[StreamListen] Error joining stream: {ex.Message}");
             StatusMessage = "Failed to join: " + ex.Message;
+            StateHasChanged();
         }
         finally
         {
@@ -85,12 +104,52 @@ else
 
     private async Task LeaveStreamAsync()
     {
+        Console.WriteLine("[StreamListen] LeaveStreamAsync called");
         try
         {
             await JS.InvokeVoidAsync("konfAudio.stopListening");
         }
-        catch {}
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[StreamListen] Error leaving stream: {ex.Message}");
+        }
         Joined = false;
         StatusMessage = "Disconnected";
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Callback method invoked by JavaScript when stream state changes.
+    /// </summary>
+    /// <param name="state">Stream state: "active" when stream starts, "ended" when stream stops</param>
+    [JSInvokable]
+    public async Task OnStreamStateChanged(string state)
+    {
+        Console.WriteLine($"[StreamListen] OnStreamStateChanged called with state: {state}");
+        await InvokeAsync(() =>
+        {
+            Console.WriteLine($"[StreamListen] InvokeAsync executing, current StatusMessage: {StatusMessage}");
+            StatusMessage = state switch
+            {
+                "active" => "Stream is active - Audio playing",
+                "ended" => "Stream has finished",
+                _ => StatusMessage
+            };
+            Console.WriteLine($"[StreamListen] New StatusMessage: {StatusMessage}");
+            StateHasChanged();
+            Console.WriteLine($"[StreamListen] StateHasChanged called");
+        });
+        Console.WriteLine($"[StreamListen] OnStreamStateChanged completed");
+    }
+
+    private async Task TestStateChange(string state)
+    {
+        Console.WriteLine($"[StreamListen] TestStateChange called manually with state: {state}");
+        await OnStreamStateChanged(state);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
     }
 }

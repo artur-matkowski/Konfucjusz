@@ -237,6 +237,34 @@ public class AudioStreamHub : Hub
     }
 
     /// <summary>
+    /// Notify all listeners that the stream has started for an event.
+    /// Should be called by the broadcaster when they begin streaming.
+    /// </summary>
+    /// <param name="eventId">ID of the event</param>
+    public async Task NotifyStreamStarted(int eventId)
+    {
+        var groupName = GroupName(eventId);
+        Console.WriteLine($"[AudioStreamHub] NotifyStreamStarted called for event {eventId}");
+        Console.WriteLine($"[AudioStreamHub] Sending StreamStarted to group: {groupName}");
+        await Clients.Group(groupName).SendAsync("StreamStarted");
+        Console.WriteLine($"[AudioStreamHub] StreamStarted notification sent to group {groupName}");
+    }
+
+    /// <summary>
+    /// Notify all listeners that the stream has ended for an event.
+    /// Should be called by the broadcaster when they stop streaming.
+    /// </summary>
+    /// <param name="eventId">ID of the event</param>
+    public async Task NotifyStreamEnded(int eventId)
+    {
+        var groupName = GroupName(eventId);
+        Console.WriteLine($"[AudioStreamHub] NotifyStreamEnded called for event {eventId}");
+        Console.WriteLine($"[AudioStreamHub] Sending StreamEnded to group: {groupName}");
+        await Clients.Group(groupName).SendAsync("StreamEnded");
+        Console.WriteLine($"[AudioStreamHub] StreamEnded notification sent to group {groupName}");
+    }
+
+    /// <summary>
     /// Start server-side recording for an event.
     /// Only administrators and assigned organizers can start recordings.
     /// </summary>
