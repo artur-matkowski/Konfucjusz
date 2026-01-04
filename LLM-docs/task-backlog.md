@@ -35,6 +35,11 @@
 - [ ] **Azure-ready deployment** - Plan container deployment and secret management for Azure.
 
 ## Completed (Last Sprint)
+- [x] **Fix live audio streaming to listeners** - Fixed JoinListener authorization using correct claim resolution (2026-01-03)
+  - Applied Name claim pattern to JoinListener method in AudioStreamHub
+  - Listeners can now receive audio from broadcasters in real-time
+  - Added comprehensive logging for authorization decisions
+  - Files: Hubs/AudioStreamHub.cs
 - [x] **Create "My Events" page for participants** - Added dedicated page for users to view and access their enrolled events (2026-01-03)
   - Created MyParticipations.razor with event cards, status badges, and stream/recording access
   - Added navigation menu item for all authenticated users

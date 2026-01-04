@@ -92,13 +92,43 @@ public class AudioStreamHub : Hub
         if (!allowed && isAuth)
         {
             // Check if user is enlisted or organizer
-            var userId = int.TryParse(user!.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var uid) ? uid : (int?)null;
+            // Note: In our authentication system, the email is stored in the Name claim
+            var emailClaim = user!.FindFirst(ClaimTypes.Email) 
+                          ?? user.FindFirst("email") 
+                          ?? user.FindFirst("preferred_username")
+                          ?? user.FindFirst(ClaimTypes.Name);  // Email stored in Name claim
+            
+            int? userId = null;
+            if (emailClaim != null)
+            {
+                Console.WriteLine($"[AudioStreamHub] Found email claim: {emailClaim.Value} (type: {emailClaim.Type})");
+                var userAccount = await db.users.FirstOrDefaultAsync(u => u.userEmail == emailClaim.Value);
+                if (userAccount != null)
+                {
+                    userId = userAccount.Id;
+                    Console.WriteLine($"[AudioStreamHub] User ID resolved: {userId}");
+                }
+                else
+                {
+                    Console.WriteLine($"[AudioStreamHub] ERROR: No user found in database with email: {emailClaim.Value}");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"[AudioStreamHub] ERROR: No email claim found in user principal");
+                // Log all available claims for debugging
+                foreach (var claim in user.Claims)
+                {
+                    Console.WriteLine($"[AudioStreamHub] Available claim: {claim.Type} = {claim.Value}");
+                }
+            }
+            
             if (userId.HasValue)
             {
                 var isOrganizer = await db.eventOrganizers.AnyAsync(eo => eo.EventId == eventId && eo.UserId == userId.Value);
                 var isEnlisted = await db.eventParticipants.AnyAsync(ep => ep.EventId == eventId && ep.UserId == userId.Value);
                 allowed = isOrganizer || isEnlisted;
-                Console.WriteLine($"[AudioStreamHub] Access granted via auth: organizer={isOrganizer}, enlisted={isEnlisted}");
+                Console.WriteLine($"[AudioStreamHub] Access check - UserId: {userId}, Organizer: {isOrganizer}, Enlisted: {isEnlisted}, Allowed: {allowed}");
             }
         }
 
