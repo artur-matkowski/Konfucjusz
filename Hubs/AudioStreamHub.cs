@@ -16,6 +16,7 @@ public class AudioStreamHub : Hub
     private static readonly ConcurrentDictionary<int, HashSet<string>> EventGroups = new();
     private static readonly ConcurrentDictionary<string, (int eventId, string display)> ConnectionIndex = new();
     private static readonly ConcurrentDictionary<int, RecordingWriter?> ActiveRecordings = new();
+    private static readonly ConcurrentDictionary<int, int> EventSampleRates = new(); // Track sample rate per event
 
     private readonly IServiceProvider _serviceProvider;
 
@@ -54,7 +55,7 @@ public class AudioStreamHub : Hub
         await base.OnDisconnectedAsync(exception);
     }
 
-    public async Task<bool> JoinListener(int eventId, string slug, string? token)
+    public async Task<(bool success, int sampleRate)> JoinListener(int eventId, string slug, string? token)
     {
         Console.WriteLine($"[AudioStreamHub] JoinListener called: eventId={eventId}, slug={slug}, token={token}, connectionId={Context.ConnectionId}");
         
@@ -65,7 +66,7 @@ public class AudioStreamHub : Hub
         if (ev == null)
         {
             Console.WriteLine($"[AudioStreamHub] Event not found: {eventId}/{slug}");
-            return false;
+            return (false, 0);
         }
 
         Console.WriteLine($"[AudioStreamHub] Event found: AllowAnonymousStreaming={ev.AllowAnonymousStreaming}");
@@ -135,7 +136,7 @@ public class AudioStreamHub : Hub
         if (!allowed)
         {
             Console.WriteLine($"[AudioStreamHub] Access denied for eventId={eventId}");
-            return false;
+            return (false, 0);
         }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(eventId));
@@ -144,8 +145,11 @@ public class AudioStreamHub : Hub
         ConnectionIndex[Context.ConnectionId] = (eventId, display);
         await Clients.Group(ManagerGroup(eventId)).SendAsync("ListenerJoined", Context.ConnectionId, display);
         
-        Console.WriteLine($"[AudioStreamHub] JoinListener success: {Context.ConnectionId} added to group {GroupName(eventId)}");
-        return true;
+        // Get stored sample rate for this event (if broadcaster already started)
+        var sampleRate = EventSampleRates.TryGetValue(eventId, out var rate) ? rate : 44100;
+        Console.WriteLine($"[AudioStreamHub] JoinListener success: {Context.ConnectionId} added to group {GroupName(eventId)}, sampleRate={sampleRate}Hz");
+        
+        return (true, sampleRate);
     }
 
     public async Task LeaveListener(int eventId)
@@ -239,26 +243,39 @@ public class AudioStreamHub : Hub
     /// <summary>
     /// Notify all listeners that the stream has started for an event.
     /// Should be called by the broadcaster when they begin streaming.
+    /// Stores the sample rate so late-joining listeners can receive it.
     /// </summary>
     /// <param name="eventId">ID of the event</param>
-    public async Task NotifyStreamStarted(int eventId)
+    /// <param name="sampleRate">Sample rate of the audio stream in Hz (e.g., 44100, 48000)</param>
+    public async Task NotifyStreamStarted(int eventId, int sampleRate)
     {
         var groupName = GroupName(eventId);
-        Console.WriteLine($"[AudioStreamHub] NotifyStreamStarted called for event {eventId}");
+        Console.WriteLine($"[AudioStreamHub] NotifyStreamStarted called for event {eventId} with sample rate {sampleRate}Hz");
+        
+        // Store sample rate for this event
+        EventSampleRates[eventId] = sampleRate;
+        Console.WriteLine($"[AudioStreamHub] Stored sample rate {sampleRate}Hz for event {eventId}");
+        
         Console.WriteLine($"[AudioStreamHub] Sending StreamStarted to group: {groupName}");
-        await Clients.Group(groupName).SendAsync("StreamStarted");
-        Console.WriteLine($"[AudioStreamHub] StreamStarted notification sent to group {groupName}");
+        await Clients.Group(groupName).SendAsync("StreamStarted", sampleRate);
+        Console.WriteLine($"[AudioStreamHub] StreamStarted notification sent to group {groupName} with sampleRate={sampleRate}");
     }
 
     /// <summary>
     /// Notify all listeners that the stream has ended for an event.
     /// Should be called by the broadcaster when they stop streaming.
+    /// Clears the stored sample rate for this event.
     /// </summary>
     /// <param name="eventId">ID of the event</param>
     public async Task NotifyStreamEnded(int eventId)
     {
         var groupName = GroupName(eventId);
         Console.WriteLine($"[AudioStreamHub] NotifyStreamEnded called for event {eventId}");
+        
+        // Clear stored sample rate
+        EventSampleRates.TryRemove(eventId, out _);
+        Console.WriteLine($"[AudioStreamHub] Cleared sample rate for event {eventId}");
+        
         Console.WriteLine($"[AudioStreamHub] Sending StreamEnded to group: {groupName}");
         await Clients.Group(groupName).SendAsync("StreamEnded");
         Console.WriteLine($"[AudioStreamHub] StreamEnded notification sent to group {groupName}");
