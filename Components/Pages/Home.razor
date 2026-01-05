@@ -62,12 +62,9 @@
                                 <div class="btn-group" role="group">
                                     <button class="btn btn-sm btn-outline-primary" @onclick="() => EditEvent(currentEvent.Id)">Edit</button>
                                     <button class="btn btn-sm btn-outline-secondary" title="Send email to all participants" @onclick="() => MailAll(currentEvent.Id)">Mail All</button>
-                                    @if (isOngoing || currentEvent.EventStartDate <= DateTime.UtcNow.AddHours(1))
-                                    {
-                                        <button class="btn btn-sm btn-success" title="Broadcast audio stream" @onclick="() => StreamAudio(currentEvent.Id)">
-                                            📡 Stream
-                                        </button>
-                                    }
+                                    <button class="btn btn-sm btn-success" title="Broadcast audio stream" @onclick="() => StreamAudio(currentEvent.Id)">
+                                        📡 Stream
+                                    </button>
                                 </div>
                             </div>
                         </div>
