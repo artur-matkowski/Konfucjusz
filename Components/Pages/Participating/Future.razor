@@ -84,6 +84,13 @@ else
                             <div class="d-grid gap-2">
                                 @if (participation.Status == ParticipantStatus.Confirmed || participation.Status == ParticipantStatus.Waitlisted)
                                 {
+                                    @if (!string.IsNullOrEmpty(evt.Slug))
+                                    {
+                                        <button class="btn btn-primary btn-sm" @onclick="() => GoToStream(evt.Slug)">
+                                            🎧 Join Stream
+                                        </button>
+                                    }
+                                    
                                     <button class="btn btn-outline-danger btn-sm" @onclick="() => ShowCancelConfirmation(participation, evt)">
                                         Cancel Participation
                                     </button>
@@ -230,6 +237,14 @@ else
             .ToListAsync();
         
         participations = results;
+    }
+
+    private void GoToStream(string? slug)
+    {
+        if (!string.IsNullOrEmpty(slug))
+        {
+            Navigation.NavigateTo($"/e/{slug}/stream");
+        }
     }
 
     private void ShowCancelConfirmation(EventParticipantWithEvent participation, Event evt)
