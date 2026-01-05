@@ -1,4 +1,4 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
 <div class="page">
     <div class="sidebar">
@@ -12,6 +12,7 @@
                     <a href="/login">Login</a>
                 </NotAuthorized>
                 <Authorized>
+                    <span class="me-3">Logged in as <strong>@context?.User?.Identity?.Name</strong></span>
                     <a href="/logout">Logout</a>
                 </Authorized>
             </AuthorizeView>

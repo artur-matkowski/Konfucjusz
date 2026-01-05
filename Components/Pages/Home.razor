@@ -11,24 +11,18 @@
 
 <PageTitle>Home</PageTitle>
 
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-body">
-                <AuthorizeView>
-                    <NotAuthorized>
-                        <span>You are not logged in. Please <a class="fw-bolder" href="/login">click here</a> to login</span>
-                    </NotAuthorized>
-                    <Authorized>
-                        <span> Logged in as <b>@context?.User?.Identity?.Name</b>. <a class="fw-bolder" href="/logout">logout</a></span>
-                    </Authorized>
-                </AuthorizeView>
-            </div>    
-        </div>
-    </div>
-</div>
-
 <AuthorizeView>
+    <NotAuthorized>
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <span>You are not logged in. Please <a class="fw-bolder" href="/login">click here</a> to login</span>
+                    </div>    
+                </div>
+            </div>
+        </div>
+    </NotAuthorized>
     <Authorized>
         @if (loading)
         {
@@ -106,7 +100,7 @@
                                 <p class="mb-1"><strong>End:</strong> @currentEvent.EventEndDate.ToLocalTime().ToString("f")</p>
                                 <hr />
                                 
-                                @if (isOngoing && !string.IsNullOrEmpty(currentEvent.Slug))
+                                @if (!string.IsNullOrEmpty(currentEvent.Slug))
                                 {
                                     <button class="btn btn-primary" @onclick="() => GoToStream(currentEvent.Slug)">
                                         🎧 Join Stream
@@ -219,12 +213,15 @@
         }
         else
         {
-            // For participants: show participating events
+            // For participants: show participating events (exclude cancelled/declined/removed)
             // First, try to find ongoing events
             var ongoingParticipation = await DbContext.eventParticipants
                 .Where(p => p.UserId == currentUserId && 
                            p.Event!.EventStartDate <= now && 
-                           p.Event!.EventEndDate >= now)
+                           p.Event!.EventEndDate >= now &&
+                           p.Status != ParticipantStatus.Cancelled &&
+                           p.Status != ParticipantStatus.Declined &&
+                           p.Status != ParticipantStatus.Removed)
                 .Include(p => p.Event)
                 .OrderBy(p => p.Event!.EventStartDate)
                 .FirstOrDefaultAsync();
@@ -240,7 +237,11 @@
             {
                 // No ongoing events, find next future event
                 var futureParticipation = await DbContext.eventParticipants
-                    .Where(p => p.UserId == currentUserId && p.Event!.EventStartDate > now)
+                    .Where(p => p.UserId == currentUserId && 
+                               p.Event!.EventStartDate > now &&
+                               p.Status != ParticipantStatus.Cancelled &&
+                               p.Status != ParticipantStatus.Declined &&
+                               p.Status != ParticipantStatus.Removed)
                     .Include(p => p.Event)
                     .OrderBy(p => p.Event!.EventStartDate)
                     .FirstOrDefaultAsync();
