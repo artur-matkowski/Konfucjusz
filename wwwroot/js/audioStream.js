@@ -13,14 +13,16 @@ window.konfAudio = (function(){
         slug: null,
         token: null,
         dotNetRef: null,
-        lastPlayTime: 0,
+        nextPlayTime: 0, // Next scheduled playback time in AudioContext time
         totalChunksReceived: 0,
         totalChunksPlayed: 0,
         totalChunksDropped: 0,
+        totalChunksScheduled: 0,
         targetQueueSize: 10, // Target buffer depth (acceptable latency ~850ms)
         emergencyDropThreshold: 100, // Only drop chunks if queue exceeds this
         speedupRate: 1.3, // Playback speed when catching up
-        currentPlaybackRate: 1.0 // Current playback speed
+        currentPlaybackRate: 1.0, // Current playback speed
+        schedulerTimer: null // Timer for continuous scheduling
     };
 
     let broadcast = {
@@ -51,70 +53,117 @@ window.konfAudio = (function(){
         return new Uint8Array(buffer);
     }
 
-    function appendAndPlay() {
-        if (listen.playing || listen.queue.length === 0) return;
-        listen.playing = true;
+    /**
+     * Schedule chunks for playback using AudioContext.currentTime
+     * This eliminates gaps by pre-scheduling chunks to play seamlessly
+     */
+    function scheduleChunks() {
+        if (listen.queue.length === 0) return;
         
-        try {
-            const now = Date.now();
-            const timeSinceLastPlay = listen.lastPlayTime ? (now - listen.lastPlayTime) : 0;
-            
+        ensureAudioContext(listen);
+        
+        // Initialize playback time on first chunk
+        if (listen.nextPlayTime === 0) {
+            // Start playing immediately (with small buffer for safety)
+            listen.nextPlayTime = listen.audioCtx.currentTime + 0.05;
+            console.log('[LISTEN-DIAG] Initializing playback, starting at:', listen.nextPlayTime);
+        }
+        
+        // Schedule multiple chunks ahead to ensure seamless playback
+        // Process all available chunks in queue (up to reasonable limit)
+        let scheduled = 0;
+        const maxSchedulePerCall = 5; // Don't schedule too many at once
+        
+        while (listen.queue.length > 0 && scheduled < maxSchedulePerCall) {
             const bytes = listen.queue.shift();
             const queueLengthAfter = listen.queue.length;
-            listen.totalChunksPlayed++;
             
             // Adaptive playback rate based on queue depth
-            // Target: 10 chunks buffer (acceptable latency)
-            // If queue > target: speed up to 1.3x to catch up
-            // If queue <= target: normal 1.0x speed
             const shouldSpeedUp = queueLengthAfter > listen.targetQueueSize;
             listen.currentPlaybackRate = shouldSpeedUp ? listen.speedupRate : 1.0;
             
             // Update UI indicators
             updateStreamQualityUI(queueLengthAfter, listen.currentPlaybackRate);
             
-            if (listen.totalChunksPlayed % 50 === 0 || shouldSpeedUp) {
-                console.log(`[LISTEN-DIAG] Playing chunk #${listen.totalChunksPlayed}, queue: ${queueLengthAfter}, gap: ${timeSinceLastPlay}ms, speed: ${listen.currentPlaybackRate}x`);
-            }
-            
-            const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-            const samples = new Float32Array(bytes.byteLength / 2);
-            for (let i = 0, o = 0; i < bytes.byteLength; i += 2, o++) {
-                const s = view.getInt16(i, true);
-                samples[o] = s / 0x8000;
-            }
-            
-            ensureAudioContext(listen);
-            const chunkDurationMs = (samples.length / listen.sampleRate) * 1000;
-            const adjustedDurationMs = chunkDurationMs / listen.currentPlaybackRate;
-            
-            const buffer = listen.audioCtx.createBuffer(1, samples.length, listen.sampleRate);
-            buffer.getChannelData(0).set(samples);
-            const src = listen.audioCtx.createBufferSource();
-            src.buffer = buffer;
-            
-            // Apply playback rate for adaptive speed
-            src.playbackRate.value = listen.currentPlaybackRate;
-            
-            src.connect(listen.audioCtx.destination);
-            src.onended = function(){
-                const playbackDuration = Date.now() - now;
-                if (listen.totalChunksPlayed % 50 === 0) {
-                    console.log(`[LISTEN-DIAG] Chunk finished, actual: ${playbackDuration}ms, expected: ${adjustedDurationMs.toFixed(2)}ms, speed: ${listen.currentPlaybackRate}x`);
+            try {
+                // Decode PCM16 to Float32
+                const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+                const samples = new Float32Array(bytes.byteLength / 2);
+                for (let i = 0, o = 0; i < bytes.byteLength; i += 2, o++) {
+                    const s = view.getInt16(i, true);
+                    samples[o] = s / 0x8000;
                 }
-                listen.playing = false;
-                listen.lastPlayTime = Date.now();
-                appendAndPlay();
-            };
-            src.start();
-            listen.source = src;
-        } catch (error) {
-            console.error('[appendAndPlay] ERROR:', error);
-            listen.playing = false;
-            // Try to continue with next chunk
-            if (listen.queue.length > 0) {
-                setTimeout(() => appendAndPlay(), 100);
+                
+                // Create audio buffer
+                const buffer = listen.audioCtx.createBuffer(1, samples.length, listen.sampleRate);
+                buffer.getChannelData(0).set(samples);
+                
+                // Create buffer source
+                const src = listen.audioCtx.createBufferSource();
+                src.buffer = buffer;
+                src.playbackRate.value = listen.currentPlaybackRate;
+                src.connect(listen.audioCtx.destination);
+                
+                // Calculate chunk duration with adaptive speed
+                const chunkDurationSec = (samples.length / listen.sampleRate) / listen.currentPlaybackRate;
+                
+                // Schedule to play at precise time (seamless connection to previous chunk)
+                src.start(listen.nextPlayTime);
+                
+                listen.totalChunksScheduled++;
+                scheduled++;
+                
+                // Log periodically
+                if (listen.totalChunksScheduled % 50 === 0 || shouldSpeedUp) {
+                    const latency = (listen.nextPlayTime - listen.audioCtx.currentTime) * 1000;
+                    console.log(`[LISTEN-DIAG] Scheduled chunk #${listen.totalChunksScheduled}, queue: ${queueLengthAfter}, latency: ${latency.toFixed(0)}ms, speed: ${listen.currentPlaybackRate}x`);
+                }
+                
+                // Advance next play time
+                listen.nextPlayTime += chunkDurationSec;
+                
+                // Prevent scheduling too far in the future (drift correction)
+                const maxFutureTime = listen.audioCtx.currentTime + 2.0; // Max 2 seconds ahead
+                if (listen.nextPlayTime > maxFutureTime) {
+                    console.warn(`[LISTEN-DIAG] Playback scheduled too far ahead (${(listen.nextPlayTime - listen.audioCtx.currentTime).toFixed(2)}s), adjusting...`);
+                    listen.nextPlayTime = maxFutureTime;
+                }
+                
+            } catch (error) {
+                console.error('[scheduleChunks] ERROR processing chunk:', error);
+                // Continue with next chunk
             }
+        }
+        
+        // If we're running low on scheduled audio, warn
+        const bufferedTime = listen.nextPlayTime - listen.audioCtx.currentTime;
+        if (bufferedTime < 0.1) {
+            console.warn('[LISTEN-DIAG] Audio buffer critically low! Buffered:', bufferedTime.toFixed(3), 's');
+        }
+    }
+    
+    /**
+     * Start continuous scheduling loop
+     */
+    function startScheduler() {
+        if (listen.schedulerTimer) return; // Already running
+        
+        console.log('[LISTEN-DIAG] Starting continuous audio scheduler');
+        
+        // Schedule chunks every 20ms (faster than chunk arrival rate)
+        listen.schedulerTimer = setInterval(() => {
+            scheduleChunks();
+        }, 20);
+    }
+    
+    /**
+     * Stop scheduling loop
+     */
+    function stopScheduler() {
+        if (listen.schedulerTimer) {
+            clearInterval(listen.schedulerTimer);
+            listen.schedulerTimer = null;
+            console.log('[LISTEN-DIAG] Stopped audio scheduler');
         }
     }
 
@@ -160,6 +209,9 @@ window.konfAudio = (function(){
                 console.log(`[startListening] AudioContext state after resume: ${listen.audioCtx.state}`);
             }
             
+            // Start continuous audio scheduler
+            startScheduler();
+            
             if (listen.connection) {
                 console.log('[startListening] Stopping existing connection');
                 await listen.connection.stop();
@@ -189,7 +241,7 @@ window.konfAudio = (function(){
                     const queueLengthBefore = listen.queue.length;
                     
                     // Emergency drop: only if queue exceeds extreme threshold (100 chunks)
-                    // Normal strategy: speed up playback to catch up (see appendAndPlay)
+                    // Normal strategy: speed up playback to catch up (see scheduleChunks)
                     if (listen.queue.length >= listen.emergencyDropThreshold) {
                         const dropped = listen.queue.shift(); // Drop oldest chunk
                         listen.totalChunksDropped++;
@@ -200,12 +252,12 @@ window.konfAudio = (function(){
                     
                     // Log every 50th chunk to avoid console spam
                     if (listen.totalChunksReceived % 50 === 0) {
-                        const lag = listen.totalChunksReceived - listen.totalChunksPlayed - listen.totalChunksDropped;
+                        const lag = listen.totalChunksReceived - listen.totalChunksScheduled - listen.totalChunksDropped;
                         const queueStatus = listen.queue.length > listen.targetQueueSize ? '⚠️ OVER TARGET' : '✓ OK';
                         console.log(`[LISTEN-DIAG] Received #${listen.totalChunksReceived}, queue: ${listen.queue.length} ${queueStatus}, lag: ${lag} chunks, dropped: ${listen.totalChunksDropped}`);
                     }
                     
-                    appendAndPlay();
+                    // Scheduler will pick up chunks automatically
                 } catch (error) {
                     console.error('[ReceiveAudio] ERROR:', error);
                 }
@@ -288,6 +340,9 @@ window.konfAudio = (function(){
         },
         stopListening: async function(){
             try {
+                // Stop scheduler first
+                stopScheduler();
+                
                 if (listen.connection) {
                     await listen.connection.invoke("LeaveListener", listen.eventId);
                     await listen.connection.stop();
@@ -295,14 +350,15 @@ window.konfAudio = (function(){
             } catch {}
             
             // Log final statistics
-            console.log(`[LISTEN-DIAG] Session ended - Received: ${listen.totalChunksReceived}, Played: ${listen.totalChunksPlayed}, Dropped: ${listen.totalChunksDropped}`);
+            console.log(`[LISTEN-DIAG] Session ended - Received: ${listen.totalChunksReceived}, Scheduled: ${listen.totalChunksScheduled}, Dropped: ${listen.totalChunksDropped}`);
             
             listen.connection = null;
             listen.queue = [];
             listen.playing = false;
             listen.dotNetRef = null;
+            listen.nextPlayTime = 0;
             listen.totalChunksReceived = 0;
-            listen.totalChunksPlayed = 0;
+            listen.totalChunksScheduled = 0;
             listen.totalChunksDropped = 0;
         },
         startBroadcast: async function(hubUrl, eventId) {
