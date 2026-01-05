@@ -159,11 +159,15 @@
 
     <hr class="my-4" />
 
-    <h4>Enlist Link</h4>
+    <h4>Important Links</h4>
     @if (!string.IsNullOrEmpty(CurrentEvent.Slug))
     {
         var enlistUrl = $"{Nav.BaseUri}e/{CurrentEvent.Slug}/enlist";
+        var streamUrl = $"{Nav.BaseUri}e/{CurrentEvent.Slug}/stream";
+        
+        <!-- Enlist Link -->
         <div class="mb-3">
+            <label class="form-label fw-bold">Enlist Link</label>
             <div class="input-group">
                 <input type="text" class="form-control" readonly value="@enlistUrl" id="enlistLinkInput" />
                 <button class="btn btn-outline-secondary" @onclick="() => CopyToClipboard(enlistUrl)">
@@ -172,6 +176,21 @@
             </div>
             <small class="form-text text-muted">Share this link for people to enlist to your event.</small>
         </div>
+
+        <!-- Stream Link (shown only if anonymous streaming is allowed) -->
+        @if (CurrentEvent.AllowAnonymousStreaming)
+        {
+            <div class="mb-3">
+                <label class="form-label fw-bold">Stream Link (Anonymous Access)</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" readonly value="@streamUrl" id="streamLinkInput" />
+                    <button class="btn btn-outline-secondary" @onclick="() => CopyToClipboard(streamUrl)">
+                        <i class="bi bi-clipboard"></i> Copy
+                    </button>
+                </div>
+                <small class="form-text text-muted">Share this link for people to listen to the event stream without enlisting.</small>
+            </div>
+        }
     }
     else
     {
