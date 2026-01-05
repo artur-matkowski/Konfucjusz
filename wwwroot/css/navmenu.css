@@ -104,6 +104,30 @@
     opacity: 1;
 }
 
+/* Details/Summary styling for collapsible sections */
+details {
+    width: 100%;
+}
+
+details summary {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+details summary::-webkit-details-marker {
+    display: none;
+}
+
+details[open] summary .bi-chevron-right::before {
+    content: "";
+    transform: rotate(90deg);
+}
+
+details summary .nav-link {
+    cursor: pointer;
+}
+
 .nav-scrollable {
     display: none;
 }
