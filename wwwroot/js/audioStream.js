@@ -17,7 +17,10 @@ window.konfAudio = (function(){
         totalChunksReceived: 0,
         totalChunksPlayed: 0,
         totalChunksDropped: 0,
-        maxQueueSize: 10 // Maximum chunks to buffer (roughly 850ms at 48kHz)
+        targetQueueSize: 10, // Target buffer depth (acceptable latency ~850ms)
+        emergencyDropThreshold: 100, // Only drop chunks if queue exceeds this
+        speedupRate: 1.3, // Playback speed when catching up
+        currentPlaybackRate: 1.0 // Current playback speed
     };
 
     let broadcast = {
@@ -60,7 +63,19 @@ window.konfAudio = (function(){
             const queueLengthAfter = listen.queue.length;
             listen.totalChunksPlayed++;
             
-            console.log(`[LISTEN-DIAG] Playing chunk #${listen.totalChunksPlayed}, size: ${bytes.length} bytes, queue: ${queueLengthAfter}, gap: ${timeSinceLastPlay}ms, sampleRate: ${listen.sampleRate}Hz`);
+            // Adaptive playback rate based on queue depth
+            // Target: 10 chunks buffer (acceptable latency)
+            // If queue > target: speed up to 1.3x to catch up
+            // If queue <= target: normal 1.0x speed
+            const shouldSpeedUp = queueLengthAfter > listen.targetQueueSize;
+            listen.currentPlaybackRate = shouldSpeedUp ? listen.speedupRate : 1.0;
+            
+            // Update UI indicators
+            updateStreamQualityUI(queueLengthAfter, listen.currentPlaybackRate);
+            
+            if (listen.totalChunksPlayed % 50 === 0 || shouldSpeedUp) {
+                console.log(`[LISTEN-DIAG] Playing chunk #${listen.totalChunksPlayed}, queue: ${queueLengthAfter}, gap: ${timeSinceLastPlay}ms, speed: ${listen.currentPlaybackRate}x`);
+            }
             
             const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
             const samples = new Float32Array(bytes.byteLength / 2);
@@ -71,16 +86,22 @@ window.konfAudio = (function(){
             
             ensureAudioContext(listen);
             const chunkDurationMs = (samples.length / listen.sampleRate) * 1000;
-            console.log(`[LISTEN-DIAG] Chunk duration: ${chunkDurationMs.toFixed(2)}ms, AudioContext.sampleRate: ${listen.audioCtx.sampleRate}Hz`);
+            const adjustedDurationMs = chunkDurationMs / listen.currentPlaybackRate;
             
             const buffer = listen.audioCtx.createBuffer(1, samples.length, listen.sampleRate);
             buffer.getChannelData(0).set(samples);
             const src = listen.audioCtx.createBufferSource();
             src.buffer = buffer;
+            
+            // Apply playback rate for adaptive speed
+            src.playbackRate.value = listen.currentPlaybackRate;
+            
             src.connect(listen.audioCtx.destination);
             src.onended = function(){
                 const playbackDuration = Date.now() - now;
-                console.log(`[LISTEN-DIAG] Chunk finished playing, actual duration: ${playbackDuration}ms, expected: ${chunkDurationMs.toFixed(2)}ms`);
+                if (listen.totalChunksPlayed % 50 === 0) {
+                    console.log(`[LISTEN-DIAG] Chunk finished, actual: ${playbackDuration}ms, expected: ${adjustedDurationMs.toFixed(2)}ms, speed: ${listen.currentPlaybackRate}x`);
+                }
                 listen.playing = false;
                 listen.lastPlayTime = Date.now();
                 appendAndPlay();
@@ -93,6 +114,31 @@ window.konfAudio = (function(){
             // Try to continue with next chunk
             if (listen.queue.length > 0) {
                 setTimeout(() => appendAndPlay(), 100);
+            }
+        }
+    }
+
+    function updateStreamQualityUI(queueDepth, playbackSpeed) {
+        // Update UI elements if they exist
+        const queueEl = document.getElementById('queueDepth');
+        const speedEl = document.getElementById('playbackSpeed');
+        const statusEl = document.getElementById('streamStatus');
+        
+        if (queueEl) queueEl.textContent = queueDepth;
+        if (speedEl) {
+            speedEl.textContent = playbackSpeed.toFixed(1) + 'x';
+            speedEl.style.color = playbackSpeed > 1.0 ? '#ff9800' : '#28a745';
+        }
+        if (statusEl) {
+            if (queueDepth > listen.targetQueueSize) {
+                statusEl.textContent = 'Catching up...';
+                statusEl.style.color = '#ff9800';
+            } else if (queueDepth === 0) {
+                statusEl.textContent = 'Buffering';
+                statusEl.style.color = '#dc3545';
+            } else {
+                statusEl.textContent = 'Normal';
+                statusEl.style.color = '#28a745';
             }
         }
     }
@@ -142,11 +188,12 @@ window.konfAudio = (function(){
                     
                     const queueLengthBefore = listen.queue.length;
                     
-                    // Drop old chunks if queue is too full (prevent unbounded growth)
-                    if (listen.queue.length >= listen.maxQueueSize) {
+                    // Emergency drop: only if queue exceeds extreme threshold (100 chunks)
+                    // Normal strategy: speed up playback to catch up (see appendAndPlay)
+                    if (listen.queue.length >= listen.emergencyDropThreshold) {
                         const dropped = listen.queue.shift(); // Drop oldest chunk
                         listen.totalChunksDropped++;
-                        console.warn(`[LISTEN-DIAG] Queue full (${listen.maxQueueSize}), dropped oldest chunk. Total dropped: ${listen.totalChunksDropped}`);
+                        console.error(`[LISTEN-DIAG] EMERGENCY: Queue exceeded ${listen.emergencyDropThreshold} chunks! Dropped oldest. Total dropped: ${listen.totalChunksDropped}`);
                     }
                     
                     listen.queue.push(bytes);
@@ -154,7 +201,8 @@ window.konfAudio = (function(){
                     // Log every 50th chunk to avoid console spam
                     if (listen.totalChunksReceived % 50 === 0) {
                         const lag = listen.totalChunksReceived - listen.totalChunksPlayed - listen.totalChunksDropped;
-                        console.log(`[LISTEN-DIAG] Received chunk #${listen.totalChunksReceived}, size: ${bytes.length}B, queue: ${queueLengthBefore}→${listen.queue.length}, lag: ${lag} chunks, dropped: ${listen.totalChunksDropped}`);
+                        const queueStatus = listen.queue.length > listen.targetQueueSize ? '⚠️ OVER TARGET' : '✓ OK';
+                        console.log(`[LISTEN-DIAG] Received #${listen.totalChunksReceived}, queue: ${listen.queue.length} ${queueStatus}, lag: ${lag} chunks, dropped: ${listen.totalChunksDropped}`);
                     }
                     
                     appendAndPlay();
