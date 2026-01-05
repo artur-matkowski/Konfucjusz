@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
+@using QRCoder
 @attribute [Authorize(Roles = "Administrator,Organizer")]
 @inject EventService EventSvc
 @inject ParticipantService ParticipantSvc
@@ -166,29 +167,45 @@
         var streamUrl = $"{Nav.BaseUri}e/{CurrentEvent.Slug}/stream";
         
         <!-- Enlist Link -->
-        <div class="mb-3">
+        <div class="mb-4">
             <label class="form-label fw-bold">Enlist Link</label>
-            <div class="input-group">
-                <input type="text" class="form-control" readonly value="@enlistUrl" id="enlistLinkInput" />
-                <button class="btn btn-outline-secondary" @onclick="() => CopyToClipboard(enlistUrl)">
-                    <i class="bi bi-clipboard"></i> Copy
-                </button>
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="input-group mb-2">
+                        <input type="text" class="form-control" readonly value="@enlistUrl" id="enlistLinkInput" />
+                        <button class="btn btn-outline-secondary" @onclick="() => CopyToClipboard(enlistUrl)">
+                            <i class="bi bi-clipboard"></i> Copy
+                        </button>
+                    </div>
+                    <small class="form-text text-muted">Share this link for people to enlist to your event.</small>
+                </div>
+                <div class="col-md-4 text-center">
+                    <img src="@GenerateQRCode(enlistUrl)" alt="QR Code for Enlist Link" class="img-fluid border rounded" style="max-width: 200px;" />
+                    <div><small class="text-muted">QR Code (right-click to save)</small></div>
+                </div>
             </div>
-            <small class="form-text text-muted">Share this link for people to enlist to your event.</small>
         </div>
 
         <!-- Stream Link (shown only if anonymous streaming is allowed) -->
         @if (CurrentEvent.AllowAnonymousStreaming)
         {
-            <div class="mb-3">
+            <div class="mb-4">
                 <label class="form-label fw-bold">Stream Link (Anonymous Access)</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" readonly value="@streamUrl" id="streamLinkInput" />
-                    <button class="btn btn-outline-secondary" @onclick="() => CopyToClipboard(streamUrl)">
-                        <i class="bi bi-clipboard"></i> Copy
-                    </button>
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" readonly value="@streamUrl" id="streamLinkInput" />
+                            <button class="btn btn-outline-secondary" @onclick="() => CopyToClipboard(streamUrl)">
+                                <i class="bi bi-clipboard"></i> Copy
+                            </button>
+                        </div>
+                        <small class="form-text text-muted">Share this link for people to listen to the event stream without enlisting.</small>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <img src="@GenerateQRCode(streamUrl)" alt="QR Code for Stream Link" class="img-fluid border rounded" style="max-width: 200px;" />
+                        <div><small class="text-muted">QR Code (right-click to save)</small></div>
+                    </div>
                 </div>
-                <small class="form-text text-muted">Share this link for people to listen to the event stream without enlisting.</small>
             </div>
         }
     }
@@ -771,6 +788,32 @@ Automated notification.";
             Console.WriteLine(ex);
             StatusMessage = "Error removing participant.";
             StatusCss = "alert-danger";
+        }
+    }
+
+    /// <summary>
+    /// Generates a QR code as a base64-encoded PNG image data URI
+    /// </summary>
+    /// <param name="url">The URL to encode in the QR code</param>
+    /// <returns>Data URI string for use in img src attribute</returns>
+    private string GenerateQRCode(string url)
+    {
+        try
+        {
+            using (var qrGenerator = new QRCodeGenerator())
+            {
+                var qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
+                using (var qrCode = new PngByteQRCode(qrCodeData))
+                {
+                    byte[] qrCodeImage = qrCode.GetGraphic(20); // 20 pixels per module for high quality
+                    return $"data:image/png;base64,{Convert.ToBase64String(qrCodeImage)}";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error generating QR code: {ex.Message}");
+            return string.Empty;
         }
     }
 }
