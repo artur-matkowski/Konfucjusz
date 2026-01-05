@@ -281,10 +281,14 @@
             await JS.InvokeVoidAsync("konfAudio.startBroadcast", "/hubs/audio", CurrentEvent.Id);
             Console.WriteLine("[StreamBroadcast] Broadcast started");
             
-            // Notify all listeners that stream has started
+            // Get the actual sample rate from the broadcast AudioContext
+            var detectedSampleRate = await JS.InvokeAsync<int>("eval", "window.konfAudio_getSampleRate ? window.konfAudio_getSampleRate() : 44100");
+            Console.WriteLine($"[StreamBroadcast] Detected sample rate: {detectedSampleRate}Hz");
+            
+            // Notify all listeners that stream has started with sample rate
             Console.WriteLine("[StreamBroadcast] Notifying listeners that stream started...");
-            await JS.InvokeVoidAsync("konfAudio.invoke", "/hubs/audio", "NotifyStreamStarted", CurrentEvent.Id);
-            Console.WriteLine("[StreamBroadcast] Stream start notification sent");
+            await JS.InvokeVoidAsync("konfAudio.invoke", "/hubs/audio", "NotifyStreamStarted", CurrentEvent.Id, detectedSampleRate);
+            Console.WriteLine($"[StreamBroadcast] Stream start notification sent with sampleRate={detectedSampleRate}");
             
             // Automatically start recording
             Console.WriteLine("[StreamBroadcast] Waiting 500ms before starting recording...");
