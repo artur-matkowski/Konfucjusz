@@ -1,0 +1,286 @@
+@page "/organizing/future"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = "Administrator,Organizer")]
+@inject EventService EventSvc
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ApplicationDbContext Db
+@inject NavigationManager Nav
+
+<h3>📋 Organizing - Future Events</h3>
+
+@if (!string.IsNullOrEmpty(StatusMessage))
+{
+    <div class="alert @StatusCss" role="alert">@StatusMessage</div>
+}
+
+<div class="mb-3">
+    @if (CurrentUserRole.Contains("Organizer") || CurrentUserRole.Contains("Administrator"))
+    {
+        <button class="btn btn-primary" @onclick="CreateNewEvent">Create Event</button>
+    }
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>Title</th>
+                <th>Event Start</th>
+                <th>Event End</th>
+                <th>Searchable</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Events == null || !Events.Any())
+            {
+                <tr><td colspan="5" class="text-muted">No future events found.</td></tr>
+            }
+            else
+            {
+                @foreach (var evt in Events)
+                {
+                    <tr>
+                        <td>@evt.Title</td>
+                        <td>@evt.EventStartDate.ToLocalTime().ToString("g")</td>
+                        <td>@evt.EventEndDate.ToLocalTime().ToString("g")</td>
+                        <td>
+                            @if (evt.Searchable)
+                            {
+                                <span class="badge bg-success">Yes</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">No</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => EditEvent(evt.Id)">Edit</button>
+                                <button class="btn btn-sm btn-outline-secondary" title="Send email to all participants" @onclick="() => MailAll(evt.Id)">Mail All</button>
+                                <button class="btn btn-sm btn-success" title="Broadcast audio stream" @onclick="() => StreamAudio(evt.Id)">
+                                    📡 Stream
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" title="Delete event and all related data" @onclick="() => PromptDeleteEvent(evt.Id, evt.Title)">
+                                    🗑️ Delete
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (showDeleteDialog && pendingDeleteEvent != null)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1050;display:flex;align-items:center;justify-content:center;">
+        <div class="card" style="width:600px;max-width:95%;">
+            <div class="card-body">
+                <h5 class="card-title">⚠️ Confirm Event Deletion</h5>
+                <div class="alert alert-warning">
+                    <strong>Warning:</strong> This action is irreversible and will delete:
+                    <ul class="mb-0 mt-2">
+                        <li>All event organizers</li>
+                        <li>All participants and their data</li>
+                        <li>All audio recordings and files (freeing disk space)</li>
+                        <li>The event itself</li>
+                    </ul>
+                </div>
+                
+                <div class="mb-3">
+                    <strong>Event Details:</strong>
+                    <table class="table table-sm table-bordered mt-2">
+                        <tbody>
+                            <tr><th style="width:30%">Title</th><td>@pendingDeleteEvent.Title</td></tr>
+                            <tr><th>Event Date</th><td>@pendingDeleteEvent.EventStartDate.ToString("g")</td></tr>
+                            <tr><th>Created</th><td>@pendingDeleteEvent.CreationTimestamp.ToString("g")</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p class="card-text mb-2">
+                    Type the event title <code>@deleteEventExpectedTitle</code> to confirm deletion:
+                </p>
+                <input class="form-control mb-3" @bind="typedDeleteText" placeholder="Type event title here" />
+                
+                <div class="d-flex justify-content-end gap-2">
+                    <button class="btn btn-secondary" @onclick="CancelDeleteEvent">Cancel</button>
+                    <button class="btn btn-danger" disabled="@(typedDeleteText != deleteEventExpectedTitle)" @onclick="ConfirmDeleteEventAsync">
+                        <i class="bi bi-trash"></i> Delete Event
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Event> Events { get; set; } = new();
+    private int CurrentUserId { get; set; }
+    private string CurrentUserRole { get; set; } = string.Empty;
+    private string? StatusMessage { get; set; }
+    private string StatusCss { get; set; } = "alert-info";
+    
+    // Delete confirmation dialog state
+    private bool showDeleteDialog = false;
+    private Event? pendingDeleteEvent = null;
+    private string deleteEventExpectedTitle = string.Empty;
+    private string typedDeleteText = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user?.Identity?.IsAuthenticated != true)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        var email = user.Identity?.Name;
+        var userAccount = await Db.users.FirstOrDefaultAsync(u => u.userEmail == email);
+        if (userAccount == null)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        CurrentUserId = userAccount.Id;
+        CurrentUserRole = userAccount.userRole ?? string.Empty;
+
+        await LoadEventsAsync();
+    }
+
+    private async Task LoadEventsAsync()
+    {
+        var allEvents = await EventSvc.GetEventsForUserAsync(CurrentUserId, CurrentUserRole);
+        var now = DateTime.UtcNow;
+        
+        // Filter for future events (not started yet)
+        Events = allEvents
+            .Where(e => e.EventStartDate > now)
+            .OrderBy(e => e.EventStartDate)
+            .ToList();
+    }
+
+    private async Task CreateNewEvent()
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            var newEvent = new Event
+            {
+                Title = "New Event",
+                Description = "Event description",
+                EventStartDate = now.AddDays(7),
+                EventEndDate = now.AddDays(7).AddHours(2),
+                EnlistingStartDate = now,
+                EnlistingEndDate = now.AddDays(6),
+                AllowedAnonymousEnlisting = false,
+                AllowAnonymousStreaming = false,
+                Searchable = true
+            };
+
+            // If user has Organizer role, add them as first organizer
+            int? creatorId = null;
+            if (CurrentUserRole.Contains("Organizer"))
+            {
+                creatorId = CurrentUserId;
+            }
+
+            // Use CreateEventWithSlugAsync to generate slug immediately
+            var created = await EventSvc.CreateEventWithSlugAsync(newEvent, creatorId);
+            
+            StatusMessage = $"Event created successfully with slug: {created.Slug}";
+            StatusCss = "alert-success";
+
+            await LoadEventsAsync();
+
+            // Navigate to edit page
+            Nav.NavigateTo($"/events/edit/{created.Id}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            StatusMessage = "Error creating event.";
+            StatusCss = "alert-danger";
+        }
+    }
+
+    private void EditEvent(int eventId)
+    {
+        Nav.NavigateTo($"/events/edit/{eventId}");
+    }
+
+    private void MailAll(int eventId)
+    {
+        Nav.NavigateTo($"/events/mail-all/{eventId}");
+    }
+
+    private void StreamAudio(int eventId)
+    {
+        Nav.NavigateTo($"/events/{eventId}/stream-broadcast");
+    }
+
+    private void PromptDeleteEvent(int eventId, string? title)
+    {
+        pendingDeleteEvent = Events.FirstOrDefault(e => e.Id == eventId);
+        if (pendingDeleteEvent == null)
+        {
+            StatusMessage = "Event not found.";
+            StatusCss = "alert-danger";
+            return;
+        }
+
+        deleteEventExpectedTitle = title ?? string.Empty;
+        typedDeleteText = string.Empty;
+        showDeleteDialog = true;
+    }
+
+    private void CancelDeleteEvent()
+    {
+        showDeleteDialog = false;
+        pendingDeleteEvent = null;
+        deleteEventExpectedTitle = string.Empty;
+        typedDeleteText = string.Empty;
+    }
+
+    private async Task ConfirmDeleteEventAsync()
+    {
+        if (pendingDeleteEvent == null || typedDeleteText != deleteEventExpectedTitle)
+            return;
+
+        try
+        {
+            var (success, message, deletedFiles) = await EventSvc.DeleteEventWithCleanupAsync(pendingDeleteEvent.Id);
+            
+            if (success)
+            {
+                StatusMessage = message;
+                StatusCss = "alert-success";
+                await LoadEventsAsync();
+            }
+            else
+            {
+                StatusMessage = message;
+                StatusCss = "alert-danger";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting event: {ex}");
+            StatusMessage = $"Error deleting event: {ex.Message}";
+            StatusCss = "alert-danger";
+        }
+        finally
+        {
+            CancelDeleteEvent();
+        }
+    }
+}

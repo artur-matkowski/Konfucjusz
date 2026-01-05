@@ -1,7 +1,13 @@
-﻿@page "/"
-@using MailKit.Net.Smtp
-@using MimeKit
+@page "/"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
 @rendermode InteractiveServer
+@inject ApplicationDbContext DbContext
+@inject EventService EventSvc
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
 
 <PageTitle>Home</PageTitle>
 
@@ -14,10 +20,295 @@
                         <span>You are not logged in. Please <a class="fw-bolder" href="/login">click here</a> to login</span>
                     </NotAuthorized>
                     <Authorized>
-                        <span> Logged in as <b>@context?.User?.Identity?.Name</b>. <a class="fw-bolder" href="/logout">logout</a> to login</span>
+                        <span> Logged in as <b>@context?.User?.Identity?.Name</b>. <a class="fw-bolder" href="/logout">logout</a></span>
                     </Authorized>
                 </AuthorizeView>
             </div>    
         </div>
     </div>
 </div>
+
+<AuthorizeView>
+    <Authorized>
+        @if (loading)
+        {
+            <div class="row mt-4">
+                <div class="col-12">
+                    <p>Loading your events...</p>
+                </div>
+            </div>
+        }
+        else if (currentEvent != null)
+        {
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h3>@eventTitle</h3>
+                    
+                    @if (isOrganizer)
+                    {
+                        <!-- Organizer View -->
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <strong>@currentEvent.Title</strong>
+                                @if (isOngoing)
+                                {
+                                    <span class="badge bg-success">⚡ Live Now</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-info">📅 Next Event</span>
+                                }
+                            </div>
+                            <div class="card-body">
+                                <p>@currentEvent.Description</p>
+                                <hr />
+                                <p class="mb-1"><strong>Start:</strong> @currentEvent.EventStartDate.ToLocalTime().ToString("f")</p>
+                                <p class="mb-1"><strong>End:</strong> @currentEvent.EventEndDate.ToLocalTime().ToString("f")</p>
+                                <hr />
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => EditEvent(currentEvent.Id)">Edit</button>
+                                    <button class="btn btn-sm btn-outline-secondary" title="Send email to all participants" @onclick="() => MailAll(currentEvent.Id)">Mail All</button>
+                                    @if (isOngoing || currentEvent.EventStartDate <= DateTime.UtcNow.AddHours(1))
+                                    {
+                                        <button class="btn btn-sm btn-success" title="Broadcast audio stream" @onclick="() => StreamAudio(currentEvent.Id)">
+                                            📡 Stream
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Participant View -->
+                        <div class="card @GetCardBorderClass(participationStatus)">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <strong>@currentEvent.Title</strong>
+                                @if (isOngoing)
+                                {
+                                    <span class="badge bg-success">⚡ Live Now</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-info">📅 Next Event</span>
+                                }
+                            </div>
+                            <div class="card-body">
+                                <h6 class="card-subtitle mb-2 text-muted">
+                                    <span class="badge @GetStatusBadgeClass(participationStatus)">
+                                        @GetStatusDisplayText(participationStatus)
+                                    </span>
+                                </h6>
+                                
+                                <p>@currentEvent.Description</p>
+                                <hr />
+                                <p class="mb-1"><strong>Start:</strong> @currentEvent.EventStartDate.ToLocalTime().ToString("f")</p>
+                                <p class="mb-1"><strong>End:</strong> @currentEvent.EventEndDate.ToLocalTime().ToString("f")</p>
+                                <hr />
+                                
+                                @if (isOngoing && !string.IsNullOrEmpty(currentEvent.Slug))
+                                {
+                                    <button class="btn btn-primary" @onclick="() => GoToStream(currentEvent.Slug)">
+                                        🎧 Join Stream
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="alert alert-info">
+                        <h5>No Upcoming Events</h5>
+                        <p>You don't have any ongoing or upcoming events at the moment.</p>
+                    </div>
+                </div>
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool loading = true;
+    private bool isOrganizer = false;
+    private Event? currentEvent = null;
+    private bool isOngoing = false;
+    private string eventTitle = "";
+    private string participationStatus = "";
+    private int? currentUserId;
+    private string? currentUserRole;
+
+    protected override async Task OnInitializedAsync()
+    {
+        loading = true;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user?.Identity?.IsAuthenticated != true)
+            {
+                loading = false;
+                return;
+            }
+
+            // Get user info
+            var email = user.Identity?.Name;
+            var userAccount = await DbContext.users.FirstOrDefaultAsync(u => u.userEmail == email);
+            if (userAccount == null)
+            {
+                loading = false;
+                return;
+            }
+
+            currentUserId = userAccount.Id;
+            currentUserRole = userAccount.userRole ?? string.Empty;
+            isOrganizer = currentUserRole.Contains("Organizer") || currentUserRole.Contains("Administrator");
+
+            await LoadCurrentEventAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading home page: {ex}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task LoadCurrentEventAsync()
+    {
+        var now = DateTime.UtcNow;
+
+        if (isOrganizer)
+        {
+            // For organizers: show organizing events
+            var allEvents = await EventSvc.GetEventsForUserAsync(currentUserId!.Value, currentUserRole!);
+            
+            // First, try to find ongoing events
+            currentEvent = allEvents
+                .Where(e => e.EventStartDate <= now && e.EventEndDate >= now)
+                .OrderBy(e => e.EventStartDate)
+                .FirstOrDefault();
+
+            if (currentEvent != null)
+            {
+                isOngoing = true;
+                eventTitle = "🎙️ Ongoing Event";
+            }
+            else
+            {
+                // No ongoing events, find next future event
+                currentEvent = allEvents
+                    .Where(e => e.EventStartDate > now)
+                    .OrderBy(e => e.EventStartDate)
+                    .FirstOrDefault();
+
+                if (currentEvent != null)
+                {
+                    isOngoing = false;
+                    eventTitle = "📅 Next Event";
+                }
+            }
+        }
+        else
+        {
+            // For participants: show participating events
+            // First, try to find ongoing events
+            var ongoingParticipation = await DbContext.eventParticipants
+                .Where(p => p.UserId == currentUserId && 
+                           p.Event!.EventStartDate <= now && 
+                           p.Event!.EventEndDate >= now)
+                .Include(p => p.Event)
+                .OrderBy(p => p.Event!.EventStartDate)
+                .FirstOrDefaultAsync();
+
+            if (ongoingParticipation != null)
+            {
+                currentEvent = ongoingParticipation.Event;
+                participationStatus = ongoingParticipation.Status ?? "Unknown";
+                isOngoing = true;
+                eventTitle = "🎙️ Ongoing Event";
+            }
+            else
+            {
+                // No ongoing events, find next future event
+                var futureParticipation = await DbContext.eventParticipants
+                    .Where(p => p.UserId == currentUserId && p.Event!.EventStartDate > now)
+                    .Include(p => p.Event)
+                    .OrderBy(p => p.Event!.EventStartDate)
+                    .FirstOrDefaultAsync();
+
+                if (futureParticipation != null)
+                {
+                    currentEvent = futureParticipation.Event;
+                    participationStatus = futureParticipation.Status ?? "Unknown";
+                    isOngoing = false;
+                    eventTitle = "📅 Next Event";
+                }
+            }
+        }
+    }
+
+    private void EditEvent(int eventId)
+    {
+        Nav.NavigateTo($"/events/edit/{eventId}");
+    }
+
+    private void MailAll(int eventId)
+    {
+        Nav.NavigateTo($"/events/mail-all/{eventId}");
+    }
+
+    private void StreamAudio(int eventId)
+    {
+        Nav.NavigateTo($"/events/{eventId}/stream-broadcast");
+    }
+
+    private void GoToStream(string? slug)
+    {
+        if (!string.IsNullOrEmpty(slug))
+        {
+            Nav.NavigateTo($"/e/{slug}/stream");
+        }
+    }
+
+    private string GetCardBorderClass(string status)
+    {
+        return status switch
+        {
+            ParticipantStatus.Confirmed => "border-success",
+            ParticipantStatus.Waitlisted => "border-warning",
+            ParticipantStatus.PendingApproval => "border-info",
+            _ => ""
+        };
+    }
+
+    private string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            ParticipantStatus.Confirmed => "bg-success",
+            ParticipantStatus.Waitlisted => "bg-warning text-dark",
+            ParticipantStatus.PendingApproval => "bg-info text-dark",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetStatusDisplayText(string status)
+    {
+        return status switch
+        {
+            ParticipantStatus.Confirmed => "✓ Confirmed",
+            ParticipantStatus.Waitlisted => "⏳ Waitlisted",
+            ParticipantStatus.PendingApproval => "⏳ Pending Approval",
+            _ => status
+        };
+    }
+}

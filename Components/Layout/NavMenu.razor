@@ -16,14 +16,48 @@
             </NavLink>
         </div>
 
-
-        
+        <!-- Organizing Section (Organizers/Admins only) -->
         <AuthorizeView Roles="Administrator,Organizer">
             <Authorized>
                 <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="events">
-                        <span class="bi bi-calendar-event" aria-hidden="true"></span> Events
-                    </NavLink>
+                    <a class="nav-link" @onclick="ToggleOrganizing" style="cursor: pointer;">
+                        <span class="bi @(organizingExpanded ? "bi-chevron-down" : "bi-chevron-right")" aria-hidden="true"></span>
+                        📋 Organizing
+                    </a>
+                    @if (organizingExpanded)
+                    {
+                        <div class="nav-submenu ps-4">
+                            <NavLink class="nav-link" href="organizing/future">
+                                <span class="bi bi-calendar-plus" aria-hidden="true"></span> Future Events
+                            </NavLink>
+                            <NavLink class="nav-link" href="organizing/past">
+                                <span class="bi bi-calendar-check" aria-hidden="true"></span> Past Events
+                            </NavLink>
+                        </div>
+                    }
+                </div>
+            </Authorized>
+        </AuthorizeView>
+
+        <!-- Participating Section (All authenticated users) -->
+        <AuthorizeView Roles="User,Administrator,Organizer">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <a class="nav-link" @onclick="ToggleParticipating" style="cursor: pointer;">
+                        <span class="bi @(participatingExpanded ? "bi-chevron-down" : "bi-chevron-right")" aria-hidden="true"></span>
+                        🎫 Participating
+                    </a>
+                    @if (participatingExpanded)
+                    {
+                        <div class="nav-submenu ps-4">
+                            <NavLink class="nav-link" href="participating/future">
+                                <span class="bi bi-calendar-event" aria-hidden="true"></span> Future Events
+                            </NavLink>
+                            <NavLink class="nav-link" href="participating/past">
+                                <span class="bi bi-archive" aria-hidden="true"></span> Past Events
+                            </NavLink>
+                        </div>
+                    }
                 </div>
             </Authorized>
         </AuthorizeView>
@@ -48,18 +82,7 @@
             </Authorized>
         </AuthorizeView>
 
-
-        <AuthorizeView Roles="User,Administrator,Organizer">
-            <Authorized>
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="my-events">
-                        <span class="bi bi-calendar-check" aria-hidden="true"></span> My Events
-                    </NavLink>
-                </div>
-            </Authorized>
-        </AuthorizeView>
-
-        <AuthorizeView Roles="Administrator,User">
+        <AuthorizeView Roles="Administrator,User,Organizer">
             <Authorized>
                 <div class="nav-item px-3">
                     <NavLink class="nav-link" href="user-self">
@@ -68,8 +91,21 @@
                 </div>
             </Authorized>
         </AuthorizeView>
-
-
     </nav>
 </div>
+
+@code {
+    private bool organizingExpanded = false;
+    private bool participatingExpanded = false;
+
+    private void ToggleOrganizing()
+    {
+        organizingExpanded = !organizingExpanded;
+    }
+
+    private void ToggleParticipating()
+    {
+        participatingExpanded = !participatingExpanded;
+    }
+}
 

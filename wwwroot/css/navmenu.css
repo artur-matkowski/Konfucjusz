@@ -80,9 +80,27 @@
     font-weight: 500;
 }
 
-.nav-item .nav-link:hover {
+    .nav-item .nav-link:hover {
     background-color: color-mix(in srgb, var(--bs-primary) 40%, rgba(255,255,255,0.2));
     color: var(--color-text-on-dark) !important;
+    opacity: 1;
+}
+
+/* Submenu styles for collapsible sections */
+.nav-submenu {
+    margin-top: 0.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.nav-submenu .nav-link {
+    font-size: 0.85rem;
+    height: 2.5rem;
+    line-height: 2.5rem;
+    padding-left: 1rem;
+    opacity: 0.75;
+}
+
+.nav-submenu .nav-link:hover {
     opacity: 1;
 }
 

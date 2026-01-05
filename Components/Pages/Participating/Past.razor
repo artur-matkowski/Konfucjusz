@@ -1,0 +1,225 @@
+@page "/participating/past"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@attribute [Authorize(Roles = "User,Administrator,Organizer")]
+@inject ApplicationDbContext DbContext
+@inject ParticipantService ParticipantService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Participating - Past Events</PageTitle>
+
+<h3>🎫 Participating - Past Events</h3>
+
+@if (loading)
+{
+    <div class="mt-4">
+        <p>Loading your events...</p>
+    </div>
+}
+else if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-4">
+        @errorMessage
+    </div>
+}
+else if (!participations.Any())
+{
+    <div class="alert alert-info mt-4">
+        <h5>No Past Events</h5>
+        <p>You haven't participated in any past events yet.</p>
+    </div>
+}
+else
+{
+    <div class="mt-4">
+        <p class="text-muted">Events you participated in that have already ended.</p>
+        
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mt-2">
+            @foreach (var participation in participations)
+            {
+                var evt = participation.Event;
+                
+                <div class="col">
+                    <div class="card h-100 @GetCardBorderClass(participation.Status)">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <strong>@evt.Title</strong>
+                            <span class="badge bg-secondary">Past</span>
+                        </div>
+                        <div class="card-body">
+                            <h6 class="card-subtitle mb-2 text-muted">
+                                <span class="badge @GetStatusBadgeClass(participation.Status)">
+                                    @GetStatusDisplayText(participation.Status)
+                                </span>
+                            </h6>
+                            
+                            <p class="card-text small">@evt.Description</p>
+                            
+                            <hr />
+                            
+                            <p class="small mb-1">
+                                <strong>Start:</strong> @evt.EventStartDate.ToLocalTime().ToString("f")
+                            </p>
+                            <p class="small mb-1">
+                                <strong>End:</strong> @evt.EventEndDate.ToLocalTime().ToString("f")
+                            </p>
+                        </div>
+                        <div class="card-footer bg-transparent">
+                            <div class="d-grid gap-2">
+                                @if (!string.IsNullOrEmpty(evt.Slug))
+                                {
+                                    <button class="btn btn-outline-secondary btn-sm" @onclick="() => GoToRecordings(evt.Slug)">
+                                        📼 View Recordings
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private List<EventParticipantWithEvent> participations = new();
+    private bool loading = true;
+    private string? errorMessage;
+    private int? currentUserId;
+    private string? currentUserEmail;
+    
+    private class EventParticipantWithEvent
+    {
+        public EventParticipant Participant { get; set; } = null!;
+        public Event Event { get; set; } = null!;
+        public string Status => Participant.Status ?? "Unknown";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        loading = true;
+        
+        try
+        {
+            // Get current user
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            
+            if (user?.Identity?.IsAuthenticated != true)
+            {
+                errorMessage = "You must be logged in to view your events.";
+                loading = false;
+                return;
+            }
+            
+            // Get email from Name claim
+            var emailClaim = user.FindFirst(ClaimTypes.Email) 
+                          ?? user.FindFirst("email") 
+                          ?? user.FindFirst("preferred_username")
+                          ?? user.FindFirst(ClaimTypes.Name);
+            
+            if (emailClaim != null)
+            {
+                currentUserEmail = emailClaim.Value;
+                
+                // Look up user ID from database
+                var userAccount = await DbContext.users.FirstOrDefaultAsync(u => u.userEmail == currentUserEmail);
+                if (userAccount != null)
+                {
+                    currentUserId = userAccount.Id;
+                }
+            }
+            
+            if (currentUserId == null)
+            {
+                errorMessage = "Unable to identify your account. Please try logging out and back in.";
+                loading = false;
+                return;
+            }
+            
+            // Load participations
+            await LoadParticipationsAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading events: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task LoadParticipationsAsync()
+    {
+        var now = DateTime.UtcNow;
+        
+        // Get participations for past events only (ended)
+        var results = await DbContext.eventParticipants
+            .Where(p => p.UserId == currentUserId && p.Event!.EventEndDate < now)
+            .Include(p => p.Event)
+            .OrderByDescending(p => p.Event!.EventEndDate)
+            .Select(p => new EventParticipantWithEvent
+            {
+                Participant = p,
+                Event = p.Event!
+            })
+            .ToListAsync();
+        
+        participations = results;
+    }
+
+    private void GoToRecordings(string? slug)
+    {
+        if (string.IsNullOrEmpty(slug))
+        {
+            return;
+        }
+        
+        Navigation.NavigateTo($"/e/{slug}/recordings");
+    }
+
+    private string GetCardBorderClass(string status)
+    {
+        return status switch
+        {
+            ParticipantStatus.Confirmed => "border-success",
+            ParticipantStatus.Waitlisted => "border-warning",
+            ParticipantStatus.PendingApproval => "border-info",
+            ParticipantStatus.Cancelled => "border-secondary",
+            ParticipantStatus.Removed => "border-danger",
+            _ => ""
+        };
+    }
+
+    private string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            ParticipantStatus.Confirmed => "bg-success",
+            ParticipantStatus.Waitlisted => "bg-warning text-dark",
+            ParticipantStatus.PendingApproval => "bg-info text-dark",
+            ParticipantStatus.Cancelled => "bg-secondary",
+            ParticipantStatus.Removed => "bg-danger",
+            ParticipantStatus.Declined => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetStatusDisplayText(string status)
+    {
+        return status switch
+        {
+            ParticipantStatus.Confirmed => "✓ Confirmed",
+            ParticipantStatus.Waitlisted => "⏳ Waitlisted",
+            ParticipantStatus.PendingApproval => "⏳ Pending Approval",
+            ParticipantStatus.Cancelled => "✗ Cancelled",
+            ParticipantStatus.Removed => "✗ Removed",
+            ParticipantStatus.Declined => "✗ Declined",
+            _ => status
+        };
+    }
+}
