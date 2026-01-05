@@ -13,15 +13,10 @@
 
 <AuthorizeView>
     <NotAuthorized>
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-body">
-                        <span>You are not logged in. Please <a class="fw-bolder" href="/login">click here</a> to login</span>
-                    </div>    
-                </div>
-            </div>
-        </div>
+        @{
+            // Redirect to login page if not authenticated
+            Nav.NavigateTo("/login");
+        }
     </NotAuthorized>
     <Authorized>
         @if (loading)
