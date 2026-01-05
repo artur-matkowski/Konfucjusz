@@ -1,3 +1,4 @@
+@rendermode InteractiveServer
 @using Microsoft.AspNetCore.Authorization
 
 <div class="top-row ps-3 navbar navbar-dark">
@@ -8,7 +9,7 @@
 
 <input type="checkbox" title="Navigation menu" class="navbar-toggler" />
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+<div class="nav-scrollable">
     <nav class="flex-column">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
@@ -20,7 +21,7 @@
         <AuthorizeView Roles="Administrator,Organizer">
             <Authorized>
                 <div class="nav-item px-3">
-                    <a class="nav-link" @onclick="ToggleOrganizing" style="cursor: pointer;">
+                    <a class="nav-link" @onclick="ToggleOrganizing" @onclick:stopPropagation="true" style="cursor: pointer;">
                         <span class="bi @(organizingExpanded ? "bi-chevron-down" : "bi-chevron-right")" aria-hidden="true"></span>
                         📋 Organizing
                     </a>
@@ -43,7 +44,7 @@
         <AuthorizeView Roles="User,Administrator,Organizer">
             <Authorized>
                 <div class="nav-item px-3">
-                    <a class="nav-link" @onclick="ToggleParticipating" style="cursor: pointer;">
+                    <a class="nav-link" @onclick="ToggleParticipating" @onclick:stopPropagation="true" style="cursor: pointer;">
                         <span class="bi @(participatingExpanded ? "bi-chevron-down" : "bi-chevron-right")" aria-hidden="true"></span>
                         🎫 Participating
                     </a>
