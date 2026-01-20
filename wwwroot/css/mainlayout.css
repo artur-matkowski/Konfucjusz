@@ -26,6 +26,12 @@ main {
     align-items: center;
 }
 
+.version-info {
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--bs-primary) 70%, #666);
+    font-family: monospace;
+}
+
     .top-row ::deep a, .top-row ::deep .btn-link {
         white-space: nowrap;
         margin-left: 1.5rem;

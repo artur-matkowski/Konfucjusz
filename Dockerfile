@@ -20,6 +20,10 @@ WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:80
 EXPOSE 80
 
+# Version info - set at build time, readable at runtime
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
+
 COPY --from=build /app/publish ./
 
 ENTRYPOINT ["dotnet", "Konfucjusz.dll"]

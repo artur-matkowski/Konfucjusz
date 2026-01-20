@@ -102,6 +102,45 @@ For Docker, set via environment variables with double underscores: `Smtp__Host`,
 - Audio streaming: `Components/Pages/Events/StreamBroadcast.razor`, `Hubs/AudioStreamHub.cs`
 - Email sending: `Services/EmailRequest.cs`
 
+## Deployment Patterns
+
+**Version Display:** The app shows its version in the top-right corner (next to "Logged in as..."). Version is passed via `APP_VERSION` environment variable at Docker build time.
+
+**Branch-based deployment strategy:**
+
+| Branch Pattern | Deployment Type | Tag Format | Registry Push |
+|---------------|-----------------|------------|---------------|
+| `main` | Production | `vX.X.X` + `latest` | Yes (ghcr.io) |
+| `issue/X` | Test | `issueX-buildNNN` | Local only (unless --push) |
+
+**Production Deployment (from `main` branch):**
+```bash
+# Create and push a version tag - GitHub Actions will build and push automatically
+git checkout main
+git tag v1.2.3
+git push origin v1.2.3
+```
+This triggers `.github/workflows/release.yml` which builds and pushes both `v1.2.3` and `latest` tags to ghcr.io.
+
+**Test Deployment (from `issue/X` branch):**
+```bash
+# Build locally with auto-incrementing version
+./scripts/deploy-test.sh
+
+# Build and push to registry
+./scripts/deploy-test.sh --push
+```
+Generates tags like `issue8-build001`, `issue8-build002`, etc.
+
+**LLM Agent Commands:**
+- When asked to "fix ticket", "start work", or work on an issue: Check current branch with `git rev-parse --abbrev-ref HEAD`. If it matches `issue/X` pattern, use `gh issue view X --json title,body,labels,state` to understand the task.
+- When asked to deploy: Determine deployment type from current branch. Use `deploy-test.sh` for issue branches, or guide through tag creation for main branch.
+
+**Remote Deployment Scripts:**
+- `scripts/map-ports.sh` — Set up SSH tunnel to remote server for development
+- `scripts/ditch-ports.sh` — Tear down SSH tunnel and restart remote container
+- `scripts/extractlogs.sh` — Extract logs from remote container
+
 ## Additional Documentation
 
 - `README.md` — Setup instructions, Gmail SMTP setup, troubleshooting
