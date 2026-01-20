@@ -17,8 +17,7 @@ services:
 
   app:
     container_name: konfucjusz_app
-    # TODO: replace this with your real registry/image:tag before deploying
-    image: ghcr.io/artur-matkowski/konfucjusz:dev
+    image: ghcr.io/artur-matkowski/konfucjusz:latest
     restart: unless-stopped
     depends_on:
       - db
