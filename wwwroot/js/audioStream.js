@@ -13,6 +13,7 @@ window.konfAudio = (function(){
         slug: null,
         token: null,
         dotNetRef: null,
+        hubUrl: null, // Store for reconnection
         nextPlayTime: 0, // Next scheduled playback time in AudioContext time
         totalChunksReceived: 0,
         totalChunksPlayed: 0,
@@ -22,7 +23,10 @@ window.konfAudio = (function(){
         emergencyDropThreshold: 100, // Only drop chunks if queue exceeds this
         speedupRate: 1.3, // Playback speed when catching up
         currentPlaybackRate: 1.0, // Current playback speed
-        schedulerTimer: null // Timer for continuous scheduling
+        schedulerTimer: null, // Timer for continuous scheduling
+        wakeLock: null, // Screen Wake Lock to prevent device sleep
+        visibilityHandler: null, // Page visibility change handler
+        reconnecting: false // Flag to prevent duplicate reconnection attempts
     };
 
     let broadcast = {
@@ -40,6 +44,226 @@ window.konfAudio = (function(){
         if (!obj.audioCtx) {
             obj.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
+    }
+
+    /**
+     * Request a Wake Lock to prevent Android/mobile devices from sleeping
+     * during audio streaming. Falls back gracefully if not supported.
+     */
+    async function requestWakeLock() {
+        if (!('wakeLock' in navigator)) {
+            console.log('[WAKE-LOCK] Wake Lock API not supported on this device');
+            return null;
+        }
+
+        try {
+            const wakeLock = await navigator.wakeLock.request('screen');
+            console.log('[WAKE-LOCK] Screen wake lock acquired');
+
+            // Wake lock is released when page visibility changes
+            // We need to re-acquire it when page becomes visible again
+            wakeLock.addEventListener('release', () => {
+                console.log('[WAKE-LOCK] Wake lock was released');
+            });
+
+            return wakeLock;
+        } catch (err) {
+            // Wake lock request can fail if:
+            // - Page is not visible
+            // - Low battery mode on some devices
+            // - User denied permission
+            console.warn('[WAKE-LOCK] Failed to acquire wake lock:', err.message);
+            return null;
+        }
+    }
+
+    /**
+     * Release the wake lock when stopping listening
+     */
+    async function releaseWakeLock() {
+        if (listen.wakeLock) {
+            try {
+                await listen.wakeLock.release();
+                console.log('[WAKE-LOCK] Wake lock released');
+            } catch (err) {
+                console.warn('[WAKE-LOCK] Error releasing wake lock:', err.message);
+            }
+            listen.wakeLock = null;
+        }
+    }
+
+    /**
+     * Handle page visibility changes (mobile browser going to background)
+     * Re-acquires wake lock and resumes AudioContext when page becomes visible
+     */
+    function setupVisibilityHandler() {
+        if (listen.visibilityHandler) {
+            document.removeEventListener('visibilitychange', listen.visibilityHandler);
+        }
+
+        listen.visibilityHandler = async () => {
+            if (document.visibilityState === 'visible') {
+                console.log('[VISIBILITY] Page became visible');
+
+                // Re-acquire wake lock (it's released when page goes to background)
+                if (!listen.wakeLock && listen.connection) {
+                    listen.wakeLock = await requestWakeLock();
+                }
+
+                // Resume AudioContext if it was suspended
+                if (listen.audioCtx && listen.audioCtx.state === 'suspended') {
+                    console.log('[VISIBILITY] Resuming suspended AudioContext...');
+                    try {
+                        await listen.audioCtx.resume();
+                        console.log('[VISIBILITY] AudioContext resumed, state:', listen.audioCtx.state);
+                    } catch (err) {
+                        console.error('[VISIBILITY] Failed to resume AudioContext:', err);
+                    }
+                }
+
+                // Check SignalR connection state and reconnect if needed
+                if (listen.connection && listen.connection.state === 'Disconnected') {
+                    console.log('[VISIBILITY] SignalR disconnected, attempting reconnection...');
+                    await handleReconnection();
+                }
+
+                // Reset playback timing to avoid audio gaps after resuming
+                if (listen.audioCtx && listen.queue.length > 0) {
+                    listen.nextPlayTime = listen.audioCtx.currentTime + 0.05;
+                    console.log('[VISIBILITY] Reset playback timing, queue depth:', listen.queue.length);
+                }
+            } else {
+                console.log('[VISIBILITY] Page hidden (background)');
+                // Wake lock will be auto-released by the browser
+            }
+        };
+
+        document.addEventListener('visibilitychange', listen.visibilityHandler);
+        console.log('[VISIBILITY] Visibility change handler installed');
+    }
+
+    /**
+     * Remove visibility handler on cleanup
+     */
+    function removeVisibilityHandler() {
+        if (listen.visibilityHandler) {
+            document.removeEventListener('visibilitychange', listen.visibilityHandler);
+            listen.visibilityHandler = null;
+            console.log('[VISIBILITY] Visibility change handler removed');
+        }
+    }
+
+    /**
+     * Handle SignalR reconnection - re-join listener group after connection restored
+     */
+    async function handleReconnection() {
+        if (listen.reconnecting) {
+            console.log('[RECONNECT] Already attempting reconnection, skipping...');
+            return;
+        }
+
+        if (!listen.eventId || !listen.slug) {
+            console.log('[RECONNECT] No event info stored, cannot reconnect');
+            return;
+        }
+
+        listen.reconnecting = true;
+
+        try {
+            // If connection is fully disconnected, we need to restart it
+            if (listen.connection.state === 'Disconnected') {
+                console.log('[RECONNECT] Connection is disconnected, starting...');
+                await listen.connection.start();
+                console.log('[RECONNECT] Connection restarted');
+            }
+
+            // Re-join the listener group
+            console.log('[RECONNECT] Re-joining listener group for event', listen.eventId);
+            const result = await listen.connection.invoke("JoinListener", listen.eventId, listen.slug, listen.token || null);
+
+            let ok, sampleRate;
+            if (typeof result === 'boolean') {
+                ok = result;
+                sampleRate = listen.sampleRate; // Keep existing
+            } else {
+                ok = result.success;
+                sampleRate = result.sampleRate;
+            }
+
+            if (ok) {
+                if (sampleRate && sampleRate > 0) {
+                    listen.sampleRate = sampleRate;
+                }
+                console.log('[RECONNECT] Successfully re-joined listener group');
+
+                // Notify UI that we're reconnected
+                if (listen.dotNetRef) {
+                    try {
+                        await listen.dotNetRef.invokeMethodAsync('OnStreamStateChanged', 'reconnected');
+                    } catch (err) {
+                        console.warn('[RECONNECT] Failed to notify UI:', err);
+                    }
+                }
+            } else {
+                console.error('[RECONNECT] Failed to re-join listener group');
+            }
+        } catch (err) {
+            console.error('[RECONNECT] Error during reconnection:', err);
+        } finally {
+            listen.reconnecting = false;
+        }
+    }
+
+    /**
+     * Setup SignalR reconnection event handlers
+     */
+    function setupReconnectionHandlers(connection) {
+        connection.onreconnecting((error) => {
+            console.log('[SIGNALR] Connection lost, attempting to reconnect...', error?.message);
+            updateStreamQualityUI(listen.queue.length, listen.currentPlaybackRate);
+
+            // Notify UI about reconnecting state
+            const statusEl = document.getElementById('streamStatus');
+            if (statusEl) {
+                statusEl.textContent = 'Reconnecting...';
+                statusEl.style.color = '#ff9800';
+            }
+        });
+
+        connection.onreconnected(async (connectionId) => {
+            console.log('[SIGNALR] Reconnected with connectionId:', connectionId);
+
+            // Re-join the listener group after reconnection
+            await handleReconnection();
+
+            // Update UI
+            const statusEl = document.getElementById('streamStatus');
+            if (statusEl) {
+                statusEl.textContent = 'Connected';
+                statusEl.style.color = '#28a745';
+            }
+        });
+
+        connection.onclose(async (error) => {
+            console.log('[SIGNALR] Connection closed', error?.message);
+
+            // Notify UI about disconnection
+            const statusEl = document.getElementById('streamStatus');
+            if (statusEl) {
+                statusEl.textContent = 'Disconnected';
+                statusEl.style.color = '#dc3545';
+            }
+
+            if (listen.dotNetRef) {
+                try {
+                    await listen.dotNetRef.invokeMethodAsync('OnStreamStateChanged', 'disconnected');
+                } catch (err) {
+                    console.warn('[SIGNALR] Failed to notify UI of disconnection:', err);
+                }
+            }
+        });
+
+        console.log('[SIGNALR] Reconnection handlers installed');
     }
 
     function pcmFloatTo16BitPCM(float32Array) {
@@ -199,28 +423,38 @@ window.konfAudio = (function(){
             console.log(`[startListening] dotNetRef type:`, typeof dotNetRef);
             listen.eventId = eventId; listen.slug = slug; listen.token = token || null;
             listen.dotNetRef = dotNetRef || null;
+            listen.hubUrl = hubUrl; // Store for reconnection
             console.log(`[startListening] Stored dotNetRef in listen object:`, listen.dotNetRef);
             ensureAudioContext(listen);
-            
+
             // Resume AudioContext if suspended (required by browser autoplay policies)
             if (listen.audioCtx.state === 'suspended') {
                 console.log('[startListening] AudioContext suspended, attempting to resume...');
                 await listen.audioCtx.resume();
                 console.log(`[startListening] AudioContext state after resume: ${listen.audioCtx.state}`);
             }
-            
+
+            // Request Wake Lock to prevent device sleep on mobile
+            listen.wakeLock = await requestWakeLock();
+
+            // Setup page visibility handler for background/foreground transitions
+            setupVisibilityHandler();
+
             // Start continuous audio scheduler
             startScheduler();
-            
+
             if (listen.connection) {
                 console.log('[startListening] Stopping existing connection');
                 await listen.connection.stop();
             }
-            
+
             listen.connection = new signalR.HubConnectionBuilder()
                 .withUrl(hubUrl)
-                .withAutomaticReconnect()
+                .withAutomaticReconnect([0, 1000, 2000, 5000, 10000, 30000]) // Retry intervals in ms
                 .build();
+
+            // Setup reconnection event handlers
+            setupReconnectionHandlers(listen.connection);
             
             listen.connection.on("ReceiveAudio", (chunk) => {
                 try {
@@ -342,24 +576,32 @@ window.konfAudio = (function(){
             try {
                 // Stop scheduler first
                 stopScheduler();
-                
+
+                // Release wake lock
+                await releaseWakeLock();
+
+                // Remove visibility handler
+                removeVisibilityHandler();
+
                 if (listen.connection) {
                     await listen.connection.invoke("LeaveListener", listen.eventId);
                     await listen.connection.stop();
                 }
             } catch {}
-            
+
             // Log final statistics
             console.log(`[LISTEN-DIAG] Session ended - Received: ${listen.totalChunksReceived}, Scheduled: ${listen.totalChunksScheduled}, Dropped: ${listen.totalChunksDropped}`);
-            
+
             listen.connection = null;
             listen.queue = [];
             listen.playing = false;
             listen.dotNetRef = null;
+            listen.hubUrl = null;
             listen.nextPlayTime = 0;
             listen.totalChunksReceived = 0;
             listen.totalChunksScheduled = 0;
             listen.totalChunksDropped = 0;
+            listen.reconnecting = false;
         },
         startBroadcast: async function(hubUrl, eventId) {
             try {
