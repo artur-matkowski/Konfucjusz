@@ -22,22 +22,7 @@
 <div class="row">
     <div class="col-lg-4 offset-lg-4 pt-4 pb-4 border">
         
-        @* Debug information - only shown in development *@
-        @if (ShowDebugInfo)
-        {
-            <div class="alert alert-info" role="alert">
-                <strong>DEBUG: hCaptcha Configuration Status</strong>
-                <ul class="mb-0 mt-2">
-                    <li>Captcha Enabled: @(CaptchaConfig.Enabled ? "Yes" : "No (keys not configured)")</li>
-                    @if (CaptchaConfig.Enabled)
-                    {
-                        <li>IsCaptchaValid: @IsCaptchaValid</li>
-                    }
-                </ul>
-            </div>
-        }
-        
-        <EditForm Model="@Model" OnValidSubmit="RegisterUser" FormName="RegisterForm">
+<EditForm Model="@Model" OnValidSubmit="RegisterUser" FormName="RegisterForm">
             <DataAnnotationsValidator />
             @if (RegsitrationFormCorrect)
             {
@@ -112,40 +97,6 @@
     </div>
 </div>
 
-<script>
-    // hCaptcha client-side debug logging
-    console.log("=== hCaptcha Client-Side Debug Script Loaded ===");
-    console.log("Timestamp:", new Date().toISOString());
-    
-    // Log when hCaptcha API is ready
-    if (typeof hcaptcha !== 'undefined') {
-        console.log("hCaptcha API is available");
-    } else {
-        console.log("hCaptcha API not yet loaded - will check again");
-        window.addEventListener('load', function() {
-            if (typeof hcaptcha !== 'undefined') {
-                console.log("hCaptcha API loaded after page load");
-            } else {
-                console.error("hCaptcha API failed to load!");
-            }
-        });
-    }
-    
-    // Override hCaptcha callback to add logging
-    window.hcaptchaCallback = function(token) {
-        console.log("=== hCaptcha Callback Executed (Client-Side) ===");
-        console.log("Token received:", token ? token.substring(0, 20) + "..." : "(no token)");
-        console.log("Timestamp:", new Date().toISOString());
-    };
-    
-    // Log hCaptcha events
-    window.addEventListener('DOMContentLoaded', function() {
-        console.log("DOM Content Loaded - checking for hCaptcha widget");
-        const hcaptchaElements = document.querySelectorAll('.h-captcha');
-        console.log("Found", hcaptchaElements.length, "hCaptcha elements");
-    });
-</script>
-
 @code{
 
     public class LoginViewModel
@@ -171,22 +122,6 @@
 
 
 
-    protected override void OnInitialized()
-    {
-        Console.WriteLine("=== Register.razor OnInitialized ===");
-        Console.WriteLine($"  Component initialized at: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}");
-        Console.WriteLine($"  Captcha enabled: {CaptchaConfig.Enabled}");
-    }
-    
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            Console.WriteLine("=== Register.razor OnAfterRenderAsync (first render) ===");
-            Console.WriteLine("  hCaptcha component should be initializing now");
-        }
-        await base.OnAfterRenderAsync(firstRender);
-    }
 
 
 
@@ -205,18 +140,10 @@
     
     // hCaptcha validation
     private bool IsCaptchaValid { get; set; } = false;
-    
-    // Debug properties
-    private bool ShowDebugInfo => true; // Set to false in production
-    
-    protected void hCaptchaCallback(bool Result) 
+
+    protected void hCaptchaCallback(bool Result)
     {
-        Console.WriteLine($"=== hCaptcha Callback Triggered ===");
-        Console.WriteLine($"  Result: {Result}");
-        Console.WriteLine($"  Timestamp: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}");
         IsCaptchaValid = Result;
-        Console.WriteLine($"  IsCaptchaValid set to: {IsCaptchaValid}");
-        StateHasChanged(); // Force UI update to show debug info
     }
 
 
@@ -238,7 +165,6 @@
 
             if (Model is null)
             {
-                Console.WriteLine("Model is null");
                 return;
             }
 
@@ -251,37 +177,24 @@
             }
 
             // hCaptcha validation: ensure the user completed the captcha successfully (only if enabled)
-            if (CaptchaConfig.Enabled)
+            if (CaptchaConfig.Enabled && !IsCaptchaValid)
             {
-                Console.WriteLine($"=== hCaptcha Validation Check ===");
-                Console.WriteLine($"  IsCaptchaValid value: {IsCaptchaValid}");
-                Console.WriteLine($"  Checking at: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}");
-
-                if (!IsCaptchaValid)
-                {
-                    ErrorMessage = "Proszę zweryfikować, że nie jesteś robotem (hCaptcha)";
-                    Console.WriteLine("  Result: FAILED - User did not complete hCaptcha");
-                    return;
-                }
-                Console.WriteLine("  Result: PASSED - hCaptcha validation successful");
+                ErrorMessage = "Proszę zweryfikować, że nie jesteś robotem (hCaptcha)";
+                return;
             }
 
             if (string.IsNullOrWhiteSpace(Model.UserName) || string.IsNullOrWhiteSpace(Model.Password) || string.IsNullOrWhiteSpace(Model.Password2) || string.IsNullOrWhiteSpace(Model.eMail))
             {
-                Console.WriteLine("One or more required fields are empty");
                 return;
             }
 
             if (Model.Password != Model.Password2)
             {
-                Console.WriteLine("Passwords do not match");
                 return;
             }
 
-            // ensure dbContext is available
             if (dbContext is null)
             {
-                Console.WriteLine("Database context is not available");
                 return;
             }
 
