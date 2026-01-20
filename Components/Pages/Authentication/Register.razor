@@ -8,11 +8,13 @@
 @using Microsoft.AspNetCore.Identity
 @using Texnomic.Blazor.hCaptcha
 @using Microsoft.Extensions.Configuration
+@using Konfucjusz.Services
 @inject ApplicationDbContext dbContext
 @inject Microsoft.AspNetCore.DataProtection.IDataProtectionProvider DataProtectionProvider
 @inject NavigationManager navigationManager
 @inject EmailRequest emailService
 @inject IConfiguration Configuration
+@inject CaptchaSettings CaptchaConfig
 @using System.Net
 @using System.Text
 @using Microsoft.EntityFrameworkCore
@@ -26,9 +28,11 @@
             <div class="alert alert-info" role="alert">
                 <strong>DEBUG: hCaptcha Configuration Status</strong>
                 <ul class="mb-0 mt-2">
-                    <li>SiteKey: @(string.IsNullOrEmpty(DebugSiteKey) ? "❌ NOT SET" : $"✓ Set ({DebugSiteKey.Substring(0, Math.Min(8, DebugSiteKey.Length))}...)")</li>
-                    <li>Secret: @(string.IsNullOrEmpty(DebugSecret) ? "❌ NOT SET" : $"✓ Set ({DebugSecret.Substring(0, Math.Min(8, DebugSecret.Length))}...)")</li>
-                    <li>IsCaptchaValid: @IsCaptchaValid</li>
+                    <li>Captcha Enabled: @(CaptchaConfig.Enabled ? "Yes" : "No (keys not configured)")</li>
+                    @if (CaptchaConfig.Enabled)
+                    {
+                        <li>IsCaptchaValid: @IsCaptchaValid</li>
+                    }
                 </ul>
             </div>
         }
@@ -93,10 +97,13 @@
                 <ValidationMessage For="() => Model.eMail" />
             </div>
             
-            <div class="mb-3">
-                <label>Weryfikacja anty-bot</label>
-                <HCaptcha Callback="hCaptchaCallback" />
-            </div>
+            @if (CaptchaConfig.Enabled)
+            {
+                <div class="mb-3">
+                    <label>Weryfikacja anty-bot</label>
+                    <HCaptcha Callback="hCaptchaCallback" />
+                </div>
+            }
 
             <div class="mb-3 d-grid gap-2">
                 <button type="submit" class="btn btn-primary">Register</button>
@@ -166,16 +173,9 @@
 
     protected override void OnInitialized()
     {
-        // keep OnInitialized lightweight; defer interactive-only work to OnAfterRenderAsync
         Console.WriteLine("=== Register.razor OnInitialized ===");
         Console.WriteLine($"  Component initialized at: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}");
-        
-        // Load debug configuration info (use colon notation)
-        DebugSiteKey = Configuration["Captcha:hCaptcha:SiteKey"];
-        DebugSecret = Configuration["Captcha:hCaptcha:Secret"];
-        
-        Console.WriteLine($"  Debug - SiteKey from config: {(string.IsNullOrEmpty(DebugSiteKey) ? "(null or empty)" : DebugSiteKey.Substring(0, Math.Min(8, DebugSiteKey.Length)) + "...")}");
-        Console.WriteLine($"  Debug - Secret from config: {(string.IsNullOrEmpty(DebugSecret) ? "(null or empty)" : DebugSecret.Substring(0, Math.Min(8, DebugSecret.Length)) + "...")}");
+        Console.WriteLine($"  Captcha enabled: {CaptchaConfig.Enabled}");
     }
     
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -208,8 +208,6 @@
     
     // Debug properties
     private bool ShowDebugInfo => true; // Set to false in production
-    private string? DebugSiteKey { get; set; }
-    private string? DebugSecret { get; set; }
     
     protected void hCaptchaCallback(bool Result) 
     {
@@ -252,18 +250,21 @@
                 return;
             }
 
-            // hCaptcha validation: ensure the user completed the captcha successfully
-            Console.WriteLine($"=== hCaptcha Validation Check ===");
-            Console.WriteLine($"  IsCaptchaValid value: {IsCaptchaValid}");
-            Console.WriteLine($"  Checking at: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}");
-            
-            if (!IsCaptchaValid)
+            // hCaptcha validation: ensure the user completed the captcha successfully (only if enabled)
+            if (CaptchaConfig.Enabled)
             {
-                ErrorMessage = "Proszę zweryfikować, że nie jesteś robotem (hCaptcha)";
-                Console.WriteLine("  Result: FAILED - User did not complete hCaptcha");
-                return;
+                Console.WriteLine($"=== hCaptcha Validation Check ===");
+                Console.WriteLine($"  IsCaptchaValid value: {IsCaptchaValid}");
+                Console.WriteLine($"  Checking at: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}");
+
+                if (!IsCaptchaValid)
+                {
+                    ErrorMessage = "Proszę zweryfikować, że nie jesteś robotem (hCaptcha)";
+                    Console.WriteLine("  Result: FAILED - User did not complete hCaptcha");
+                    return;
+                }
+                Console.WriteLine("  Result: PASSED - hCaptcha validation successful");
             }
-            Console.WriteLine("  Result: PASSED - hCaptcha validation successful");
 
             if (string.IsNullOrWhiteSpace(Model.UserName) || string.IsNullOrWhiteSpace(Model.Password) || string.IsNullOrWhiteSpace(Model.Password2) || string.IsNullOrWhiteSpace(Model.eMail))
             {
