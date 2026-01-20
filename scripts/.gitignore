@@ -3,3 +3,6 @@
 
 # Ignore local logs
 *.log
+
+# Ignore build counter (local state)
+.build-counter

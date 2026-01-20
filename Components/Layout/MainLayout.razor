@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@inject Konfucjusz.Services.AppVersion AppVersion
 
 <div class="page">
     <div class="sidebar">
@@ -7,6 +8,7 @@
 
     <main>
         <div class="top-row px-4">
+            <span class="version-info me-auto">@AppVersion.Version</span>
             <AuthorizeView>
                 <NotAuthorized>
                     <a href="/login">Login</a>

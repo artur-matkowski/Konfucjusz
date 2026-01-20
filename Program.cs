@@ -52,6 +52,10 @@ var hCaptchaEnabled = !string.IsNullOrEmpty(hCaptchaSiteKey) && !string.IsNullOr
 
 builder.Services.AddSingleton(new CaptchaSettings { Enabled = hCaptchaEnabled });
 
+// App version - read from environment variable (set at Docker build time)
+var appVersion = Environment.GetEnvironmentVariable("APP_VERSION") ?? "dev";
+builder.Services.AddSingleton(new AppVersion { Version = appVersion });
+
 builder.Services.AddHttpClient();
 if (hCaptchaEnabled)
 {
