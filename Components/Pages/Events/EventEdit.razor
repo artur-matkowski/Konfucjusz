@@ -79,7 +79,12 @@
             <div class="col-md-4 mb-3">
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" @bind="CurrentEvent.AllowAnonymousStreaming" id="anonStream" />
-                    <label class="form-check-label" for="anonStream">Allow Anonymous Streaming</label>
+                    <label class="form-check-label" for="anonStream">
+                        Public Stream
+                        <span class="bi bi-question-circle text-muted ms-1"
+                              title="When enabled, anyone with the stream link can listen without logging in or enlisting. When disabled, only enlisted participants can access the stream."
+                              style="cursor: help;"></span>
+                    </label>
                 </div>
             </div>
         </div>
@@ -186,11 +191,11 @@
             </div>
         </div>
 
-        <!-- Stream Link (shown only if anonymous streaming is allowed) -->
+        <!-- Stream Link (shown only if public streaming is enabled) -->
         @if (CurrentEvent.AllowAnonymousStreaming)
         {
             <div class="mb-4">
-                <label class="form-label fw-bold">Stream Link (Anonymous Access)</label>
+                <label class="form-label fw-bold">Public Stream Link</label>
                 <div class="row">
                     <div class="col-md-8">
                         <div class="input-group mb-2">
