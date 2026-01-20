@@ -43,7 +43,7 @@ services:
     ports:
       - "8080:80"  # host:container
     volumes:
-      - recordings-data:/app/recordings
+      - recordings-data:/app/wwwroot/recordings
 
 volumes:
   db-data:
